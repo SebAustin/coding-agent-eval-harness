@@ -1,0 +1,57 @@
+# .cursorrules — coding-agent-eval-harness
+# Owner: Sebastien Henry. Anchor: Cursor / Harvey / Anthropic FDE portfolio.
+
+You are pairing with a senior engineer. Write production code. No explanations unless asked.
+
+## Stack (pinned Jun 2026)
+- Python 3.12.4. uv 0.5.x. ruff 0.8.4 (select=ALL, ignore=[D,ANN101,COM812,ISC001]).
+- mypy 1.13 --strict. pydantic 2.9 with ConfigDict(frozen=True, extra="forbid").
+- httpx 0.28 async only. No requests, no urllib.
+- Docker SDK docker==7.1.0 for container management. Never subprocess("docker ...").
+- tree-sitter 0.23 for AST analysis. radon 6.0.1 for complexity.
+- sentence-transformers 3.3.1 for contamination embeddings. Model: all-MiniLM-L6-v2.
+- anthropic 0.40.0 (claude-sonnet-4-5-20251022 for judge, claude-opus-4-7 for hard eval).
+- openai 1.53.0 for Codex baseline.
+- langsmith 0.2.10 for run tracing (optional, activated by LANGSMITH_API_KEY).
+
+## Architecture invariants
+- Every agent adapter implements agents.base.AgentAdapter ABC.
+- Every task runs in a FRESH Docker container via sandbox.runner.DockerSandbox.
+  Never run agent code or tests on the host filesystem.
+- Rubric scores are floats in [0.0, 1.0]. Composite = weighted sum defined in
+  rubric/scorer.py::WEIGHTS. Changing weights requires updating docs/rubric_design.md.
+- Contamination flag (is_contaminated: bool) is ALWAYS computed and stored with
+  each TaskResult. Never drop contaminated tasks — flag them, include them, report
+  the contamination rate separately.
+- Every TaskResult carries: task_id, agent_id, patch, test_pass_rate,
+  diff_minimality, complexity_delta, style_score, semantic_score, composite_score,
+  is_contaminated, latency_ms, cost_usd, error (str | None).
+
+## Security invariants (Docker sandbox)
+- Sandbox containers run with: --network=none, --memory=512m, --cpus=1.0,
+  --read-only (except /workspace), --tmpfs /tmp:size=64m. Never --privileged.
+- No API keys passed into sandbox containers. Agent API calls happen on the host;
+  only the resulting patch string enters the container.
+- Timeout: 120s hard limit per container. SIGKILL after timeout.
+
+## Contamination contract
+- Contamination check uses cosine similarity of task embedding vs SWE-bench train
+  set embeddings (all-MiniLM-L6-v2, pre-computed in data/contamination/).
+- Threshold: similarity > 0.85 => is_contaminated = True.
+- Always report: n_total, n_contaminated, contamination_rate in leaderboard output.
+- Never filter contaminated tasks from eval — report separate clean/all metrics.
+
+## Forbidden patterns
+- subprocess("docker ...) or subprocess("git ...") in src/ — use Docker SDK / GitPython.
+- print() in src/ — use structlog.
+- time.sleep in async code — asyncio.sleep.
+- Hardcoded repo names / commit SHAs in src/ — always parameterized.
+- Any eval that cannot be reproduced bit-for-bit from the same task JSONL file.
+  Seeds are mandatory. Model temperature = 0 for judge calls.
+
+## Testing
+- 85% line coverage gate. pytest-asyncio strict mode.
+- Sandbox tests marked @pytest.mark.sandbox — require Docker, skipped in CI by default.
+- Unit tests mock Docker SDK and agent API calls via respx / unittest.mock.
+
+## Conventional commits: feat(rubric):, fix(sandbox):, chore(dataset):, etc.

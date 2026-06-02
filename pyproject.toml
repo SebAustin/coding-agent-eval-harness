@@ -1,0 +1,36 @@
+[project]
+name = "coding-agent-eval-harness"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "anthropic==0.40.0",
+  "openai==1.53.0",
+  "docker==7.1.0",
+  "gitpython==3.1.43",
+  "tree-sitter==0.23.0",
+  "sentence-transformers==3.3.1",
+  "radon==6.0.1",
+  "pydantic==2.9.2",
+  "pydantic-settings==2.6.1",
+  "httpx==0.28.1",
+  "structlog==24.4.0",
+  "typer==0.15.1",
+  "langsmith==0.2.10",
+  "numpy==2.1.3",
+  "rich==13.9.4",
+]
+[project.optional-dependencies]
+dev = ["ruff==0.8.4","mypy==1.13.0","pytest==8.3.4","pytest-asyncio==0.24.0",
+       "pytest-cov==6.0.0","respx==0.21.1","pytest-mock==3.14.0"]
+[project.scripts]
+coding-eval = "coding_eval.cli:app"
+[tool.ruff] line-length = 100
+[tool.ruff.lint] select=["ALL"]
+                 ignore=["D","ANN101","COM812","ISC001"]
+[tool.mypy] strict=true ; python_version="3.12"
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+markers = ["sandbox: requires Docker (slow)"]
+addopts = "--cov=src/coding_eval --cov-fail-under=85 -q -m 'not sandbox'"
+

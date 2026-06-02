@@ -1,0 +1,11 @@
+{"task_id":"t-001","repo":"o/r","base_commit":"a","issue_number":1,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-002","repo":"o/r","base_commit":"a","issue_number":2,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-003","repo":"o/r","base_commit":"a","issue_number":3,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-004","repo":"o/r","base_commit":"a","issue_number":4,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-005","repo":"o/r","base_commit":"a","issue_number":5,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-006","repo":"o/r","base_commit":"a","issue_number":6,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-007","repo":"o/r","base_commit":"a","issue_number":7,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-008","repo":"o/r","base_commit":"a","issue_number":8,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-009","repo":"o/r","base_commit":"a","issue_number":9,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+{"task_id":"t-010","repo":"o/r","base_commit":"a","issue_number":10,"issue_title":"x","issue_body":"y","test_files":["tests/test_x.py"],"hints_text":""}
+
