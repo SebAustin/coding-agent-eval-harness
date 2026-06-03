@@ -1,0 +1,7 @@
+diff --git a/greeter.py b/greeter.py
+--- a/greeter.py
++++ b/greeter.py
+@@ -1,2 +1,2 @@
+ def greet() -> str:
+-    return "old"
++    return "new"

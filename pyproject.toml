@@ -56,11 +56,14 @@ ignore_missing_imports = true
 "src/coding_eval/dataset/io.py" = ["TC003"]
 "src/coding_eval/**/*.py" = ["TC001", "TC002", "FBT001", "FBT003", "S108", "BLE001", "SIM105", "S110"]
 "src/coding_eval/patching/git_apply.py" = ["RUF100"]
-"src/coding_eval/sandbox/runner.py" = ["F401"]
+"src/coding_eval/agents/aider.py" = ["S603", "S607"]
+"src/coding_eval/sandbox/runner.py" = []
 "src/coding_eval/rubric/scorer.py" = ["UP037"]
 "tests/test_contamination.py" = ["FBT001", "FBT002", "ARG002"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+norecursedirs = ["fixtures", ".git", "__pycache__", "data"]
 markers = ["sandbox: requires Docker (slow)"]
 addopts = "--cov=src/coding_eval --cov-fail-under=85 -q -m 'not sandbox'"
 

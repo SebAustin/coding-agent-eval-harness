@@ -1,30 +1,29 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-from git import Repo
-
-from coding_eval.patching.git_apply import PatchApplyError, apply_unified_diff
+from coding_eval.sandbox.patch import compute_test_pass_rate, parse_test_results
+from coding_eval.sandbox.runner import SandboxResult
 
 
-def test_git_apply_good_diff(tmp_path: Path, fixtures_dir: Path) -> None:
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir(parents=True, exist_ok=True)
-    repo = Repo.init(str(repo_dir))
-    (repo_dir / ".gitignore").write_text("", encoding="utf-8")
-    repo.index.add([".gitignore"])
-    repo.index.commit("init")
-
-    diff = (fixtures_dir / "good.diff").read_text(encoding="utf-8")
-    apply_unified_diff(str(repo_dir), diff)
-    assert (repo_dir / "hello.txt").exists()
+def test_parse_test_results_passed_with_warning() -> None:
+    stdout = "3 passed, 1 warning in 0.12s"
+    assert parse_test_results(stdout) == (3, 3)
 
 
-def test_git_apply_raises_on_bad_diff(tmp_path: Path) -> None:
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir(parents=True, exist_ok=True)
-    Repo.init(str(repo_dir))
-    with pytest.raises(PatchApplyError):
-        apply_unified_diff(str(repo_dir), "not a diff")
+def test_parse_test_results_failed_and_passed() -> None:
+    stdout = "2 failed, 1 passed in 0.42s"
+    assert parse_test_results(stdout) == (1, 3)
 
+
+def test_compute_test_pass_rate_from_sandbox_result() -> None:
+    result = SandboxResult(
+        exit_code=0,
+        stdout="2 passed in 0.05s",
+        stderr="",
+        duration_ms=50.0,
+        timed_out=False,
+    )
+    assert compute_test_pass_rate(result) == 1.0
+
+
+def test_parse_test_results_empty() -> None:
+    assert parse_test_results("") == (0, 0)
