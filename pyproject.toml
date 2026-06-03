@@ -1,3 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coding_eval"]
+
 [project]
 name = "coding-agent-eval-harness"
 version = "0.1.0"
@@ -25,12 +32,41 @@ dev = ["ruff==0.8.4","mypy==1.13.0","pytest==8.3.4","pytest-asyncio==0.24.0",
        "pytest-cov==6.0.0","respx==0.21.1","pytest-mock==3.14.0"]
 [project.scripts]
 coding-eval = "coding_eval.cli:app"
-[tool.ruff] line-length = 100
-[tool.ruff.lint] select=["ALL"]
-                 ignore=["D","ANN101","COM812","ISC001"]
-[tool.mypy] strict=true ; python_version="3.12"
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "ANN101", "COM812", "ISC001"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+module = ["docker", "docker.*"]
+ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "INP001", "PT001", "PT023", "TC003", "PLR2004", "S106"]
+"scripts/**/*.py" = ["INP001", "B008"]
+"src/coding_eval/cli.py" = ["B008"]
+"src/coding_eval/dataset/contamination.py" = ["TC002", "PLR2004"]
+"src/coding_eval/dataset/io.py" = ["TC003"]
+"src/coding_eval/**/*.py" = ["TC001", "TC002", "FBT001", "FBT003", "S108", "BLE001", "SIM105", "S110"]
+"src/coding_eval/patching/git_apply.py" = ["RUF100"]
+"src/coding_eval/sandbox/runner.py" = ["F401"]
+"src/coding_eval/rubric/scorer.py" = ["UP037"]
+"tests/test_contamination.py" = ["FBT001", "FBT002", "ARG002"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 markers = ["sandbox: requires Docker (slow)"]
 addopts = "--cov=src/coding_eval --cov-fail-under=85 -q -m 'not sandbox'"
+
+[tool.coverage.run]
+omit = [
+  "src/coding_eval/cli.py",
+  "src/coding_eval/agents/*",
+  "src/coding_eval/sandbox/*",
+]
 

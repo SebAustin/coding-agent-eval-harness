@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 
 import typer
 
+from coding_eval.dataset.builder import GitHubDatasetBuilder
 from coding_eval.dataset.io import load_tasks
 from coding_eval.results.aggregator import Leaderboard, write_leaderboard_json
 
@@ -33,10 +36,24 @@ def build_dataset(
     repos: list[str] = typer.Option(..., "--repo"),
     limit: int = typer.Option(50, "--limit"),
     output: str = typer.Option("data/tasks/seed_50.jsonl", "--output"),
+    max_pr_pages: int = typer.Option(5, "--max-pr-pages"),
+    max_merged_search_pages: int = typer.Option(3, "--max-merged-search-pages"),
+    verbose: bool = typer.Option(False, "--verbose"),
+    token: str | None = typer.Option(None, "--token"),
 ) -> None:
-    _ = (repos, limit)
+    github_token = token or os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        typer.echo("GITHUB_TOKEN is required (or pass --token)", err=True)
+        raise typer.Exit(code=1)
+
     p = Path(output)
     p.parent.mkdir(parents=True, exist_ok=True)
-    if not p.exists():
-        p.write_text("", encoding="utf-8")
+    builder = GitHubDatasetBuilder(
+        github_token=github_token,
+        repos=repos,
+        max_pr_pages=max_pr_pages,
+        max_merged_search_pages=max_merged_search_pages,
+        log_filter_misses=verbose,
+    )
+    asyncio.run(builder.run(str(p), limit=limit))
 

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import tempfile
 from pathlib import Path
 
 from git import GitCommandError, Repo
 
 
-@dataclass(frozen=True, slots=True)
 class PatchApplyError(RuntimeError):
-    message: str
-
-    def __str__(self) -> str:  # noqa: D105
-        return self.message
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
 
 
 def apply_unified_diff(repo_path: str, patch: str) -> None:
@@ -21,11 +19,18 @@ def apply_unified_diff(repo_path: str, patch: str) -> None:
         raise PatchApplyError(msg)
 
     repo = Repo(str(repo_dir))
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".patch",
+        delete=False,
+    ) as tmp:
+        tmp.write(patch)
+        patch_path = tmp.name
+
     try:
-        repo.git.execute(
-            ["git", "apply", "--whitespace=nowarn", "--reject", "--recount", "-"],
-            istream=patch.encode("utf-8"),
-        )
+        repo.git.apply("--whitespace=nowarn", patch_path)
     except GitCommandError as e:
         raise PatchApplyError(str(e)) from e
-
+    finally:
+        Path(patch_path).unlink(missing_ok=True)

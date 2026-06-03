@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 CONTAMINATION_THRESHOLD = 0.85
 
 
-def load_swebench_embeddings(path: str) -> np.ndarray:
+def load_swebench_embeddings(path: str) -> NDArray[np.float32]:
     arr = np.load(path)
     if arr.ndim != 2:
         msg = f"Expected 2D embeddings array, got shape {arr.shape!r}"
         raise ValueError(msg)
-    return arr.astype(np.float32, copy=False)
+    return np.asarray(arr, dtype=np.float32)
 
 
-def _cosine_max(query_vec: np.ndarray, mat: np.ndarray) -> float:
+def _cosine_max(query_vec: NDArray[np.float32], mat: NDArray[np.float32]) -> float:
     q = query_vec.astype(np.float32, copy=False)
     q_norm = np.linalg.norm(q)
     if not np.isfinite(q_norm) or q_norm == 0:
@@ -35,7 +36,7 @@ def _cosine_max(query_vec: np.ndarray, mat: np.ndarray) -> float:
 
 def compute_contamination(
     issue_body: str,
-    swebench_embeddings: np.ndarray,
+    swebench_embeddings: NDArray[np.float32],
     model: SentenceTransformer,
 ) -> tuple[bool, float]:
     """Returns (is_contaminated, max_cosine_similarity)."""

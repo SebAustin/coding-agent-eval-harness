@@ -27,7 +27,7 @@ class RubricScores:
 
     @property
     def composite(self) -> float:
-        return sum(getattr(self, k) * v for k, v in WEIGHTS.items())
+        return float(sum(getattr(self, k) * v for k, v in WEIGHTS.items()))
 
 
 async def score(
