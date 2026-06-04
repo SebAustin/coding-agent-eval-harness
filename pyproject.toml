@@ -45,7 +45,7 @@ strict = true
 python_version = "3.12"
 
 [[tool.mypy.overrides]]
-module = ["docker", "docker.*", "datasets", "datasets.*"]
+module = ["docker", "docker.*", "datasets", "datasets.*", "radon", "radon.*"]
 ignore_missing_imports = true
 
 [tool.ruff.lint.per-file-ignores]
@@ -58,7 +58,7 @@ ignore_missing_imports = true
 "src/coding_eval/patching/git_apply.py" = ["RUF100"]
 "src/coding_eval/agents/aider.py" = ["S603", "S607"]
 "src/coding_eval/sandbox/runner.py" = []
-"src/coding_eval/rubric/scorer.py" = ["UP037"]
+"src/coding_eval/rubric/style.py" = ["S603", "S607"]
 "tests/test_contamination.py" = ["FBT001", "FBT002", "ARG002"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
