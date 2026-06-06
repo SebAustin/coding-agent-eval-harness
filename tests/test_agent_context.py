@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from coding_eval.agents.context import (
+    extract_keywords,
     format_apply_failure_context,
     format_patch_target_files,
     gather_repo_context,
@@ -125,3 +126,40 @@ def test_format_apply_failure_context(tmp_path: Path) -> None:
     formatted = format_apply_failure_context(str(repo), apply_error)
     assert "git apply failed at line 2" in formatted
     assert "2| b = 2" in formatted
+
+
+def test_extract_keywords_prioritizes_backtick_and_title_terms() -> None:
+    weights = extract_keywords(
+        "rich.pretty does not show maxlen for `deque`",
+        "Some prose mentioning helper once. CLICOLOR=1 in the dump.",
+        [],
+    )
+    # backtick + title term outranks an incidental body word; env vars are dropped.
+    assert weights["deque"] > weights.get("helper", 0.0)
+    assert "CLICOLOR" not in weights
+
+
+def test_gather_surfaces_relevant_region_of_large_file(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    pkg = repo / "rich"
+    tests = repo / "tests"
+    pkg.mkdir(parents=True)
+    tests.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    # A file far larger than the per-file budget; the relevant symbol sits well
+    # past the head, where naive head-truncation would never reach it.
+    head = "".join(f"filler_{i} = {i}\n" for i in range(2000))
+    relevant = "def handle_deque(obj):\n    return obj.maxlen  # the fix lives here\n"
+    tail = "".join(f"more_{i} = {i}\n" for i in range(2000))
+    (pkg / "pretty.py").write_text(head + relevant + tail, encoding="utf-8")
+    (tests / "test_pretty.py").write_text("from rich.pretty import pretty_repr\n", encoding="utf-8")
+
+    ctx = gather_repo_context(
+        str(repo),
+        ["tests/test_pretty.py"],
+        issue_title="pretty does not show `maxlen` for `deque`",
+        issue_body="When rendering a deque, maxlen is missing.",
+    )
+    assert "def handle_deque" in ctx
+    assert "the fix lives here" in ctx
+    assert "filler_0 = 0" not in ctx  # head was not blindly included

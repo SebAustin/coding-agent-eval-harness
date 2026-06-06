@@ -21,6 +21,29 @@ _PATCH_OLD_FILE_RE = re.compile(r"^--- (?:a/)?(.+)$")
 _APPLY_FAIL_RE = re.compile(r"error: patch failed: ([^:\n]+):(\d+)")
 _CONTEXT_WINDOW = 60
 
+# Relevance-aware windowing for files too large to send whole. Sending only the
+# head of a large file means the model never sees the function it must patch and
+# hallucinates the context, producing patches that cannot apply.
+_RELEVANCE_WINDOW = 45
+_MAX_KEYWORD_LINE_HITS = 12  # keywords matching more lines than this aren't discriminative
+_KEYWORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_BACKTICK_TERM_RE = re.compile(r"`([^`\n]+)`")
+_STOPWORDS = frozenset(
+    {
+        "the", "and", "for", "with", "when", "this", "that", "from", "into", "not",
+        "but", "you", "your", "are", "was", "were", "will", "would", "should",
+        "could", "has", "have", "had", "does", "did", "done", "using", "use",
+        "used", "value", "values", "return", "returns", "expected", "actual",
+        "example", "issue", "bug", "error", "output", "input", "code", "file",
+        "files", "line", "lines", "test", "tests", "case", "cases", "function",
+        "method", "class", "object", "instance", "default", "none", "true",
+        "false", "python", "repository", "repo", "steps", "see", "linked",
+        "https", "http", "com", "github", "www", "new", "old", "fix", "fixes",
+        "add", "added", "change", "changed", "also", "only", "all", "any", "one",
+        "first", "like", "instead", "where", "which", "what", "here", "there",
+    }
+)
+
 
 def _format_numbered(source: str, *, start_line: int = 1) -> str:
     lines = source.splitlines()
@@ -36,6 +59,121 @@ def _read_numbered_bounded(path: Path, *, limit: int, start_line: int = 1) -> st
     if truncated and not truncated.endswith("\n"):
         truncated = truncated.rsplit("\n", 1)[0] + "\n"
     body = _format_numbered(truncated, start_line=start_line)
+    return body + f"\n... [truncated {len(text) - len(truncated)} chars]"
+
+
+def _is_noise_identifier(ident: str) -> bool:
+    # ALL-CAPS tokens in issue prose are almost always env vars / constants from
+    # diagnostic dumps (CLICOLOR, JPY_PARENT_PID), not the symbol being fixed.
+    return ident.isupper() or ident.lower() in _STOPWORDS
+
+
+def extract_keywords(
+    issue_title: str, issue_body: str, test_sources: list[str]
+) -> dict[str, float]:
+    """Identifiers likely to name the buggy code, weighted by issue-centrality.
+
+    Backticked and title terms (``maxlen``, ``deque``) are far stronger signals
+    than a word that happens to appear once in the issue body, so they carry more
+    weight when ranking which regions of a large file to show.
+    """
+    # Dedup per source so a term repeated in an env/diagnostic dump can't inflate
+    # its weight; then sum source weights so a term that is BOTH in the title and
+    # backticked (the central symbol) decisively outranks incidental matches.
+    backtick: set[str] = set()
+    for term in _BACKTICK_TERM_RE.findall(f"{issue_title}\n{issue_body}"):
+        backtick.update(_KEYWORD_RE.findall(term))
+    title = set(_KEYWORD_RE.findall(issue_title))
+    body = set(_KEYWORD_RE.findall(issue_body))
+    test_syms: set[str] = set()
+    for source in test_sources:
+        test_syms.update(
+            ident for ident in _KEYWORD_RE.findall(source) if "_" in ident or ident[:1].isupper()
+        )
+
+    weights: dict[str, float] = {}
+    for ident in backtick | title | body | test_syms:
+        if _is_noise_identifier(ident):
+            continue
+        weight = (
+            4.0 * (ident in backtick)
+            + 3.0 * (ident in title)
+            + 2.0 * (ident in test_syms)
+            + 0.5 * (ident in body)
+        )
+        if weight > 0:
+            weights[ident] = weight
+    return weights
+
+
+def _relevant_numbered(text: str, *, keywords: dict[str, float], limit: int) -> str | None:
+    """Numbered windows around the most discriminative keyword matches.
+
+    Each line is scored by the keywords on it, combining issue-centrality (a
+    backticked/title term outweighs an incidental body word) with file rarity (a
+    keyword hitting two lines is more telling than one hitting ten). Windows are
+    added best-first until the char budget is exhausted — so a large file shows
+    the regions that matter instead of its head or an over-budget sprawl. Returns
+    None when nothing is discriminative.
+    """
+    if not keywords:
+        return None
+    lines = text.splitlines()
+    line_score: dict[int, float] = {}
+    for keyword, importance in keywords.items():
+        hits = [idx for idx, line in enumerate(lines) if keyword in line]
+        if 0 < len(hits) <= _MAX_KEYWORD_LINE_HITS:
+            weight = importance / len(hits)  # central + rare => stronger anchor
+            for idx in hits:
+                line_score[idx] = line_score.get(idx, 0.0) + weight
+    if not line_score:
+        return None
+
+    selected: list[list[int]] = []
+    used = 0
+    for anchor in sorted(line_score, key=lambda i: (-line_score[i], i)):
+        if any(lo <= anchor < hi for lo, hi in selected):
+            continue
+        lo = max(0, anchor - _RELEVANCE_WINDOW)
+        hi = min(len(lines), anchor + _RELEVANCE_WINDOW + 1)
+        cost = len("\n".join(lines[lo:hi]))
+        if used + cost > limit and selected:
+            break
+        selected.append([lo, hi])
+        used += cost
+
+    selected.sort()
+    spans: list[list[int]] = []
+    for lo, hi in selected:
+        if spans and lo <= spans[-1][1]:
+            spans[-1][1] = max(spans[-1][1], hi)
+        else:
+            spans.append([lo, hi])
+
+    chunks: list[str] = []
+    prev_hi = 0
+    for lo, hi in spans:
+        body = _format_numbered("\n".join(lines[lo:hi]), start_line=lo + 1)
+        marker = "" if not chunks else f"... [{lo - prev_hi} lines omitted]\n"
+        chunks.append(marker + body)
+        prev_hi = hi
+
+    suffix = "" if prev_hi >= len(lines) else "\n... [showing sections relevant to the issue]"
+    return "\n".join(chunks) + suffix
+
+
+def _read_numbered_context(path: Path, *, limit: int, keywords: dict[str, float]) -> str:
+    """Whole file if it fits, else keyword-relevant windows, else the head."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if len(text) <= limit:
+        return _format_numbered(text)
+    relevant = _relevant_numbered(text, keywords=keywords, limit=limit)
+    if relevant is not None:
+        return relevant
+    truncated = text[:limit]
+    if truncated and not truncated.endswith("\n"):
+        truncated = truncated.rsplit("\n", 1)[0] + "\n"
+    body = _format_numbered(truncated)
     return body + f"\n... [truncated {len(text) - len(truncated)} chars]"
 
 
@@ -243,15 +381,19 @@ def gather_repo_context(
     for rel in test_files:
         add(root / rel)
 
+    test_sources: list[str] = []
     for test_path in ordered:
         if not test_path.name.startswith("test_"):
             continue
         source = test_path.read_text(encoding="utf-8", errors="replace")
+        test_sources.append(source)
         for imported in _paths_from_imports(root, source):
             add(imported)
 
     for mentioned in _paths_from_issue(root, issue_text):
         add(mentioned)
+
+    keywords = extract_keywords(issue_title, issue_body, test_sources)
 
     sections: list[str] = []
     total = 0
@@ -261,7 +403,7 @@ def gather_repo_context(
         remaining = MAX_TOTAL_CHARS - total
         per_file = min(MAX_CHARS_PER_FILE, remaining)
         rel = path.relative_to(root).as_posix()
-        body = _read_numbered_bounded(path, limit=per_file)
+        body = _read_numbered_context(path, limit=per_file, keywords=keywords)
         block = f"### {rel}\n```python\n{body}\n```"
         sections.append(block)
         total += len(block)
@@ -280,6 +422,7 @@ __all__ = [
     "MAX_CHARS_PER_FILE",
     "MAX_RETRY_FILE_CHARS",
     "MAX_TOTAL_CHARS",
+    "extract_keywords",
     "format_apply_failure_context",
     "format_patch_target_files",
     "gather_repo_context",

@@ -53,15 +53,21 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 | `style_score` | 15% | ruff violations introduced in changed lines |
 | `semantic_score` | 20% | Claude Sonnet 4.5 judge: does the patch correctly address the issue? |
 
-## Leaderboard (v0.1.0, seed_50, contamination-free subset, n=42)
+## Leaderboard (v0.1.0 preliminary — claude-code, 10-task subset)
 
-| Agent | Composite | Test pass | Diff min | Complexity | Style | Semantic | Cost/task |
-|---|---|---|---|---|---|---|---|
-| Claude Code (Sonnet 4.5) | **0.74** | 0.81 | 0.72 | 0.68 | 0.89 | 0.71 | $0.019 |
-| Aider (GPT-4o) | 0.68 | 0.75 | 0.65 | 0.64 | 0.82 | 0.66 | $0.031 |
-| OpenAI Codex | 0.61 | 0.69 | 0.58 | 0.61 | 0.78 | 0.59 | $0.028 |
+> Measured numbers from `results/leaderboard.json` (`--seed 42 --limit 10`).
+> Aider/Codex adapters and the full 50-task run are pending (issues #1, #2), as is
+> the multi-agent comparison. Per-task composite varies up to ~0.2 between runs
+> from agent sampling (`temperature=0` is not a seed) — see
+> [methodology §Limitations](docs/methodology.md). Average over runs before
+> reading rankings into single-run differences.
 
-*Contamination rate: 8/50 tasks (16%) flagged vs SWE-bench train. Clean-subset n=42.*
+| Agent | Composite | Test pass | Diff min | Complexity | Style | Semantic | Cost/task | n_clean | Contam% |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Claude Code (Sonnet 4.5) | **0.69** | 0.50 | 0.88 | 0.90 | 0.87 | 0.59 | $0.060 | 10 | 0% |
+
+*Contamination: 0/10 tasks flagged vs SWE-bench train on this subset. Full 50-task
+contamination analysis lives in [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
 
 ## Documentation
 

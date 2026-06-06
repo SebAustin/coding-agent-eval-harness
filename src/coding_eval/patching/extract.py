@@ -126,12 +126,16 @@ def _recount_hunks(lines: list[str]) -> list[str]:
             new_seen += new_delta
             body.append(entry)
             idx += 1
-        if (
-            abs(old_seen - old_expected) > HUNK_COUNT_TOLERANCE
-            or abs(new_seen - new_expected) > HUNK_COUNT_TOLERANCE
-        ):
-            break
         if old_seen == 0 and new_seen == 0:
+            break
+        # Distinguish a miscount (recount it) from a truncation (drop it) by
+        # DIRECTION, not magnitude. Truncation means generation was cut off, so the
+        # body is SHORTER than the header declared on the added/context side; that
+        # can only happen at the very end of the response. A body that meets or
+        # exceeds its declared new-count is a complete hunk the model merely
+        # miscounted (often by more than one on large hunks) — trust the body.
+        stopped_at_end = idx >= len(lines)
+        if stopped_at_end and new_seen < new_expected - HUNK_COUNT_TOLERANCE:
             break
         if old_seen == old_expected and new_seen == new_expected:
             kept.append(line)  # counts already correct — keep header verbatim

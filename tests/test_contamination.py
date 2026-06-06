@@ -212,7 +212,7 @@ def test_httpx_001_not_contaminated() -> None:
 
     try:
         model = SentenceTransformer(MODEL_NAME)
-    except Exception:
+    except Exception:  # noqa: BLE001 - any load failure (offline, missing weights) => skip
         pytest.skip("SentenceTransformer model unavailable offline")
 
     corpus = load_swebench_embeddings(str(EMBEDDINGS_PATH))

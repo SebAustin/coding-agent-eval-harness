@@ -109,8 +109,16 @@ Pinned in `src/coding_eval/models.py`. Judge prompts and parse hardening live in
 
 1. **Same-model bias.** Agent and judge share a model family; the judge may favour
    stylistically similar patches.
-2. **Non-determinism.** Despite `temperature=0`, API responses can vary; semantic scores
-   are cached by `(issue, patch prefix, test_pass_rate)` hash to improve reproducibility.
+2. **Non-determinism.** The irreducible source of run-to-run variance is the **agent
+   adapter call**: `temperature=0` reduces but does not eliminate sampling variation, and
+   the Anthropic API exposes no seed parameter, so the same task can yield a different patch
+   on a re-run (observed: a single task swinging ~0.2 composite between runs purely from a
+   different generated patch). Everything *downstream* of the patch is deterministic — patch
+   extraction, sandbox execution, and the four non-LLM axes are pure functions of the patch,
+   and the semantic judge is cached by `(issue, patch prefix, test_pass_rate)` hash so an
+   identical patch always scores identically. For stable cross-agent rankings, average over
+   N runs rather than treating a single run as ground truth; per-task composite differences
+   under ~0.2 are within this noise floor.
 3. **Parse failures.** Malformed judge JSON falls back to regex extraction, then a single
    reprompt; persistent failures score `0.0` and log `semantic.parse_failed`.
 4. **No execution in judge.** The judge sees patch text and pytest tail, not interactive
