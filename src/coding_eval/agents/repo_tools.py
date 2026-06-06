@@ -43,6 +43,19 @@ class RepoToolError(Exception):
     """Raised when a tool call references a path outside the repository."""
 
 
+def _opt_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 class RepoTools:
     """Read-only file access scoped to a single repository checkout."""
 
@@ -57,17 +70,32 @@ class RepoTools:
             raise RepoToolError(msg)
         return candidate
 
-    def read_file(self, path: str) -> str:
+    def read_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> str:
         target = self._resolve(path)
         if not target.is_file():
             return f"error: not a file: {path}"
         text = target.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        if start_line is not None or end_line is not None:
+            lo = max(1, start_line or 1)
+            hi = min(len(lines), end_line or len(lines))
+            window = lines[lo - 1 : hi]
+            numbered = "\n".join(f"{idx}| {line}" for idx, line in enumerate(window, start=lo))
+            return numbered or "(empty range)"
         truncated = text[:MAX_READ_CHARS]
         numbered = "\n".join(
             f"{idx}| {line}" for idx, line in enumerate(truncated.splitlines(), start=1)
         )
         if len(text) > MAX_READ_CHARS:
-            numbered += f"\n... [truncated {len(text) - MAX_READ_CHARS} chars]"
+            numbered += (
+                f"\n... [truncated {len(text) - MAX_READ_CHARS} chars; "
+                "re-read with start_line/end_line to see more]"
+            )
         return numbered or "(empty file)"
 
     def grep(self, pattern: str, path: str | None = None) -> str:
@@ -124,7 +152,11 @@ class RepoTools:
         """
         try:
             if name == "read_file":
-                return self.read_file(str(tool_input["path"]))
+                return self.read_file(
+                    str(tool_input["path"]),
+                    _opt_int(tool_input.get("start_line")),
+                    _opt_int(tool_input.get("end_line")),
+                )
             if name == "grep":
                 return self.grep(str(tool_input["pattern"]), tool_input.get("path"))
             if name == "list_dir":
@@ -139,7 +171,8 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "name": "read_file",
         "description": (
             "Read a UTF-8 text file from the repository. Returns the contents with "
-            "'N| ' line-number prefixes; use those numbers when writing @@ hunk headers."
+            "'N| ' line-number prefixes; use those numbers when writing @@ hunk headers. "
+            "For large files, pass start_line/end_line to read just a slice."
         ),
         "input_schema": {
             "type": "object",
@@ -147,6 +180,14 @@ TOOL_SPECS: list[dict[str, Any]] = [
                 "path": {
                     "type": "string",
                     "description": "Repository-relative path, e.g. 'typer/completion.py'.",
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "Optional 1-based first line to read.",
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "Optional 1-based last line to read (inclusive).",
                 },
             },
             "required": ["path"],
