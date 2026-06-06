@@ -53,21 +53,24 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 | `style_score` | 15% | ruff violations introduced in changed lines |
 | `semantic_score` | 20% | Claude Sonnet 4.5 judge: does the patch correctly address the issue? |
 
-## Leaderboard (v0.1.0 preliminary — claude-code, 10-task subset)
+## Leaderboard (v0.1.0 — claude-code, 20-task `seed_50`)
 
-> Measured numbers from `results/leaderboard.json` (`--seed 42 --limit 10`).
-> Aider/Codex adapters and the full 50-task run are pending (issues #1, #2), as is
-> the multi-agent comparison. Per-task composite varies up to ~0.2 between runs
-> from agent sampling (`temperature=0` is not a seed) — see
+> Measured numbers from `results/leaderboard.json` (`--seed 42`, full current
+> dataset of 20 tasks). Multi-agent (Aider/Codex) comparison and dataset
+> expansion to 50 tasks are pending (issues #1, #2). Per-task composite varies up
+> to ~0.2 between runs from agent sampling (`temperature=0` is not a seed) — see
 > [methodology §Limitations](docs/methodology.md). Average over runs before
 > reading rankings into single-run differences.
 
 | Agent | Composite | Test pass | Diff min | Complexity | Style | Semantic | Cost/task | n_clean | Contam% |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Claude Code (Sonnet 4.5) | **0.69** | 0.50 | 0.88 | 0.90 | 0.87 | 0.59 | $0.060 | 10 | 0% |
+| Claude Code (Sonnet 4.5) | **0.60** | 0.40 | 0.82 | 0.85 | 0.80 | 0.45 | $0.092 | 20 | 0% |
 
-*Contamination: 0/10 tasks flagged vs SWE-bench train on this subset. Full 50-task
-contamination analysis lives in [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+*Contamination: 0/20 tasks flagged vs SWE-bench train. Of the 3 tasks scoring 0,
+all are single-shot agent limits (the model needs to explore multiple files and
+hallucinates context) rather than harness failures — see issue for an agentic
+adapter. Full 50-task contamination analysis:
+[`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
 
 ## Documentation
 

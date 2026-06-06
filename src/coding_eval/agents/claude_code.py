@@ -6,6 +6,7 @@ import anthropic
 import structlog
 from anthropic.types import MessageParam
 
+from coding_eval.agents._common import message_text, usage_cost_usd
 from coding_eval.agents.base import AgentAdapter
 from coding_eval.agents.context import (
     format_apply_failure_context,
@@ -23,8 +24,6 @@ from coding_eval.patching.validate import patch_py_files_compile
 log = structlog.get_logger(__name__)
 
 MODEL_ID = DEFAULT_AGENT_MODEL
-INPUT_USD_PER_MTOK = 3.0
-OUTPUT_USD_PER_MTOK = 15.0
 MAX_APPLY_ATTEMPTS = 3
 
 
@@ -138,9 +137,9 @@ class ClaudeCodeAdapter(AgentAdapter):
             system=SYSTEM_PROMPT,
             messages=messages,
         )
-        raw = _message_text(message)
+        raw = message_text(message)
         messages.append({"role": "assistant", "content": raw})
-        return raw, cost + _usage_cost_usd(message.usage)
+        return raw, cost + usage_cost_usd(message.usage)
 
     async def _extract_with_format_fixup(
         self,
@@ -226,20 +225,6 @@ def _build_retry_prompt(
 
 def _join_raw_log(parts: list[str]) -> str:
     return "\n\n".join(part for part in parts if part.strip())
-
-
-def _message_text(message: anthropic.types.Message) -> str:
-    parts: list[str] = []
-    for block in message.content:
-        if block.type == "text":
-            parts.append(block.text)
-    return "\n".join(parts)
-
-
-def _usage_cost_usd(usage: anthropic.types.Usage) -> float:
-    input_tokens = usage.input_tokens
-    output_tokens = usage.output_tokens
-    return (input_tokens * INPUT_USD_PER_MTOK + output_tokens * OUTPUT_USD_PER_MTOK) / 1_000_000
 
 
 __all__ = ["MAX_APPLY_ATTEMPTS", "MODEL_ID", "ClaudeCodeAdapter"]
