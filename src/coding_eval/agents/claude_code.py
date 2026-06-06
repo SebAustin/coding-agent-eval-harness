@@ -1,23 +1,29 @@
 from __future__ import annotations
 
-import re
+import asyncio
 
 import anthropic
+import structlog
+from anthropic.types import MessageParam
 
 from coding_eval.agents.base import AgentAdapter
+from coding_eval.agents.context import (
+    format_apply_failure_context,
+    format_patch_target_files,
+    gather_repo_context,
+)
+from coding_eval.agents.prompts import FORMAT_REPROMPT, FORMAT_REPROMPT_STRICT, SYSTEM_PROMPT
+from coding_eval.agents.result import AgentSolveResult
 from coding_eval.dataset.schema import Task
+from coding_eval.models import DEFAULT_AGENT_MODEL
+from coding_eval.patching.extract import extract_unified_patch, looks_like_diff_attempt
+from coding_eval.patching.git_apply import check_unified_diff
 
-MODEL_ID = "claude-sonnet-4-5-20251022"
+log = structlog.get_logger(__name__)
+
+MODEL_ID = DEFAULT_AGENT_MODEL
 INPUT_USD_PER_MTOK = 3.0
 OUTPUT_USD_PER_MTOK = 15.0
-
-SYSTEM_PROMPT = (
-    "You are a software engineer. Produce a minimal unified diff patch "
-    "that fixes the described issue. Output ONLY the diff, starting with '---'. "
-    "No explanation, no markdown fence."
-)
-
-_DIFF_START_RE = re.compile(r"^---\s", re.MULTILINE)
 
 
 class ClaudeCodeAdapter(AgentAdapter):
@@ -29,21 +35,172 @@ class ClaudeCodeAdapter(AgentAdapter):
     def name(self) -> str:
         return self.agent_id
 
-    async def solve(self, task: Task, repo_path: str) -> tuple[str, float]:
-        _ = repo_path
-        user_content = (
-            f"Issue: {task.issue_title}\n\n{task.issue_body}\n\nRepository: {task.repo}"
+    async def solve(self, task: Task, repo_path: str) -> AgentSolveResult:
+        repo_context = await asyncio.to_thread(
+            gather_repo_context,
+            repo_path,
+            task.test_files,
+            issue_body=task.issue_body,
+            issue_title=task.issue_title,
         )
+        user_content = _build_user_prompt(task, repo_context)
+        messages: list[MessageParam] = [{"role": "user", "content": user_content}]
+        cost = 0.0
+        raw_log: list[str] = []
+
+        raw, cost = await self._append_completion(messages, cost)
+        raw_log.append(raw)
+        patch, cost, fixup_raw = await self._extract_with_format_fixup(messages, raw, cost)
+        if fixup_raw:
+            raw_log.append(f"--- format fixup ---\n{fixup_raw}")
+
+        ok, apply_error = await asyncio.to_thread(check_unified_diff, repo_path, patch)
+        if ok or not patch.strip():
+            return AgentSolveResult(
+                patch=patch,
+                cost_usd=cost,
+                raw_response=_join_raw_log(raw_log),
+            )
+
+        log.info(
+            "agent.apply_check_failed",
+            task_id=task.task_id,
+            error=apply_error[:500],
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": _build_retry_prompt(
+                    task=task,
+                    repo_path=repo_path,
+                    apply_error=apply_error,
+                    previous_patch=patch,
+                ),
+            },
+        )
+        retry_raw, cost = await self._append_completion(messages, cost)
+        raw_log.append(f"--- retry ---\n{retry_raw}")
+        retry_patch, cost, retry_fixup_raw = await self._extract_with_format_fixup(
+            messages,
+            retry_raw,
+            cost,
+        )
+        if retry_fixup_raw:
+            raw_log.append(f"--- format fixup (retry) ---\n{retry_fixup_raw}")
+
+        if retry_patch.strip():
+            retry_ok, retry_error = await asyncio.to_thread(
+                check_unified_diff,
+                repo_path,
+                retry_patch,
+            )
+            if retry_ok:
+                return AgentSolveResult(
+                    patch=retry_patch,
+                    cost_usd=cost,
+                    raw_response=_join_raw_log(raw_log),
+                )
+            log.info(
+                "agent.retry_apply_check_failed",
+                task_id=task.task_id,
+                error=retry_error[:500],
+            )
+
+        return AgentSolveResult(
+            patch="",
+            cost_usd=cost,
+            raw_response=_join_raw_log(raw_log),
+        )
+
+    async def _append_completion(
+        self,
+        messages: list[MessageParam],
+        cost: float,
+    ) -> tuple[str, float]:
         message = await self._client.messages.create(
             model=MODEL_ID,
             max_tokens=4096,
             temperature=0,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_content}],
+            messages=messages,
         )
-        patch = _extract_patch(_message_text(message))
-        cost = _usage_cost_usd(message.usage)
-        return patch, cost
+        raw = _message_text(message)
+        messages.append({"role": "assistant", "content": raw})
+        return raw, cost + _usage_cost_usd(message.usage)
+
+    async def _extract_with_format_fixup(
+        self,
+        messages: list[MessageParam],
+        raw: str,
+        cost: float,
+    ) -> tuple[str, float, str]:
+        patch = extract_unified_patch(raw)
+        if patch.strip() or not looks_like_diff_attempt(raw):
+            return patch, cost, ""
+
+        fixup_log: list[str] = []
+        for attempt, reprompt in enumerate((FORMAT_REPROMPT, FORMAT_REPROMPT_STRICT), start=1):
+            log.info("agent.format_reprompt", reason="extract_empty_with_diff_marker", attempt=attempt)
+            messages.append({"role": "user", "content": reprompt})
+            fix_raw, cost = await self._append_completion(messages, cost)
+            fixup_log.append(fix_raw)
+            patch = extract_unified_patch(fix_raw)
+            if patch.strip():
+                return patch, cost, "\n\n".join(fixup_log)
+            if not looks_like_diff_attempt(fix_raw):
+                break
+
+        return "", cost, "\n\n".join(fixup_log)
+
+
+def _build_user_prompt(task: Task, repo_context: str) -> str:
+    parts = [
+        f"Issue: {task.issue_title}\n\n{task.issue_body}\n\nRepository: {task.repo}",
+    ]
+    if repo_context:
+        parts.append(repo_context)
+    return "\n\n".join(parts)
+
+
+def _build_retry_prompt(
+    *,
+    task: Task,
+    repo_path: str,
+    apply_error: str,
+    previous_patch: str,
+) -> str:
+    failure_slices = format_apply_failure_context(repo_path, apply_error)
+    file_slices = format_patch_target_files(
+        repo_path,
+        previous_patch,
+        apply_error=apply_error,
+    )
+    parts = [
+        "Your previous patch failed `git apply --check`.",
+        "The hunk line numbers and context lines MUST match the numbered source below exactly.",
+        f"Apply error:\n{apply_error}",
+        f"Previous patch:\n{previous_patch}",
+    ]
+    if failure_slices:
+        parts.append(
+            "Numbered source around the apply failure (use these exact lines as context):\n"
+            f"{failure_slices}",
+        )
+    elif file_slices:
+        parts.append(
+            "Current file contents at base commit (line numbers shown as N| code):\n"
+            f"{file_slices}",
+        )
+    parts.append(
+        f"Issue reminder: {task.issue_title}\n\n"
+        "Produce a corrected unified diff only, starting with '---'. "
+        "Each @@ header must reference line numbers that match the numbered source."
+    )
+    return "\n\n".join(parts)
+
+
+def _join_raw_log(parts: list[str]) -> str:
+    return "\n\n".join(part for part in parts if part.strip())
 
 
 def _message_text(message: anthropic.types.Message) -> str:
@@ -52,21 +209,6 @@ def _message_text(message: anthropic.types.Message) -> str:
         if block.type == "text":
             parts.append(block.text)
     return "\n".join(parts)
-
-
-def _extract_patch(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines).strip()
-    match = _DIFF_START_RE.search(stripped)
-    if match is None:
-        return ""
-    return stripped[match.start() :].strip()
 
 
 def _usage_cost_usd(usage: anthropic.types.Usage) -> float:

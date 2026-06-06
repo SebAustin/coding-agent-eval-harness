@@ -5,7 +5,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
-from .schema import Task
+from .schema import Task, TaskResult
 
 
 def iter_jsonl(path: str | Path) -> Iterator[dict[str, Any]]:
@@ -33,5 +33,14 @@ def dump_tasks(tasks: Iterable[Task], path: str | Path) -> None:
     with p.open("w", encoding="utf-8") as f:
         for t in tasks:
             f.write(t.model_dump_json())
+            f.write("\n")
+
+
+def dump_task_results(results: Iterable[TaskResult], path: str | Path) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        for result in results:
+            f.write(result.model_dump_json())
             f.write("\n")
 

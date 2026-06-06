@@ -1,5 +1,6 @@
 .env
-results/
+results/*
+!results/README.md
 __pycache__/
 *.pyc
 .coverage*

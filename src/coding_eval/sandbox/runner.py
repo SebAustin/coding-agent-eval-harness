@@ -12,6 +12,7 @@ from docker.errors import APIError, DockerException
 from docker.models.containers import Container
 from pydantic import BaseModel, ConfigDict
 
+from coding_eval.sandbox.deps import has_offline_wheels, offline_install_shell
 from coding_eval.sandbox.images import DEFAULT_SANDBOX_IMAGE
 
 
@@ -83,12 +84,17 @@ class DockerSandbox:
             patch_path.write_text(patch_text, encoding="utf-8")
 
             test_args = " ".join(spec.test_files)
-            command = (
-                "cd /workspace && "
-                "git apply --check agent.patch && "
-                "git apply agent.patch && "
-                f"PYTHONPATH=/workspace pytest {test_args} -x --timeout=30 -q 2>&1"
+            steps = ["cd /workspace"]
+            if has_offline_wheels(tmpdir):
+                steps.append(offline_install_shell())
+            steps.extend(
+                [
+                    "git apply --check agent.patch",
+                    "git apply agent.patch",
+                    f"PYTHONPATH=/workspace pytest {test_args} -x --timeout=30 -q 2>&1",
+                ],
             )
+            command = " && ".join(steps)
             return self._docker_run(
                 tmpdir=tmpdir,
                 command=command,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from coding_eval.sandbox.patch import compute_test_pass_rate, parse_test_results
 from coding_eval.sandbox.runner import SandboxResult
 
@@ -23,6 +25,17 @@ def test_compute_test_pass_rate_from_sandbox_result() -> None:
         timed_out=False,
     )
     assert compute_test_pass_rate(result) == 1.0
+
+
+def test_compute_test_pass_rate_partial_failure() -> None:
+    result = SandboxResult(
+        exit_code=1,
+        stdout="43 passed, 1 failed in 0.28s",
+        stderr="",
+        duration_ms=280.0,
+        timed_out=False,
+    )
+    assert compute_test_pass_rate(result) == pytest.approx(43 / 44)
 
 
 def test_parse_test_results_empty() -> None:

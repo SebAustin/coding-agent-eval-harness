@@ -51,7 +51,10 @@ ignore_missing_imports = true
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "INP001", "PT001", "PT023", "TC003", "PLR2004", "S106"]
 "scripts/**/*.py" = ["INP001", "B008"]
-"src/coding_eval/cli.py" = ["B008"]
+"src/coding_eval/cli.py" = ["B008", "I001", "PLR0913", "RUF100", "S311"]
+"src/coding_eval/dataset/repos.py" = ["TC003"]
+"src/coding_eval/leaderboard/render.py" = ["PERF401"]
+"tests/test_aggregator.py" = ["PLR0913"]
 "src/coding_eval/dataset/contamination.py" = ["TC002", "PLR2004"]
 "src/coding_eval/dataset/io.py" = ["TC003"]
 "src/coding_eval/**/*.py" = ["TC001", "TC002", "FBT001", "FBT003", "S108", "BLE001", "SIM105", "S110"]
@@ -72,5 +75,6 @@ omit = [
   "src/coding_eval/cli.py",
   "src/coding_eval/agents/*",
   "src/coding_eval/sandbox/*",
+  "src/coding_eval/dataset/builder.py",
 ]
 

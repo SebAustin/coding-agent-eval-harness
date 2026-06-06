@@ -4,7 +4,9 @@ import re
 import subprocess
 
 from coding_eval.agents.base import AgentAdapter
+from coding_eval.agents.result import AgentSolveResult
 from coding_eval.dataset.schema import Task
+from coding_eval.patching.extract import extract_unified_patch
 
 _DIFF_START_RE = re.compile(r"^---\s", re.MULTILINE)
 _AIDER_TIMEOUT_S = 60
@@ -16,7 +18,7 @@ class AiderAdapter(AgentAdapter):
     def name(self) -> str:
         return self.agent_id
 
-    async def solve(self, task: Task, repo_path: str) -> tuple[str, float]:
+    async def solve(self, task: Task, repo_path: str) -> AgentSolveResult:
         _ = task.issue_title
         completed = subprocess.run(  # noqa: S603
             [
@@ -34,8 +36,8 @@ class AiderAdapter(AgentAdapter):
             check=False,
         )
         combined = f"{completed.stdout}\n{completed.stderr}"
-        patch = _extract_diff(combined)
-        return patch, 0.0
+        patch = extract_unified_patch(combined) or _extract_diff(combined)
+        return AgentSolveResult(patch=patch, cost_usd=0.0, raw_response=combined)
 
 
 def _extract_diff(output: str) -> str:

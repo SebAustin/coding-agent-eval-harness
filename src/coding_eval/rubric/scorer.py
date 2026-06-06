@@ -5,8 +5,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import anthropic
+import structlog
 
 from coding_eval.rubric import complexity, diff_minimality, semantic, style, test_pass
+from coding_eval.rubric._patch_files import patch_only_modifies_tests
+
+log = structlog.get_logger(__name__)
 
 WEIGHTS = {
     "test_pass_rate": 0.35,
@@ -40,29 +44,44 @@ async def score(
     repo_path: str,
     anthropic_client: anthropic.AsyncAnthropic,
     *,
+    issue_title: str = "",
     semantic_cache_path: str | None = None,
 ) -> RubricScores:
     from pathlib import Path
 
-    cache = Path(semantic_cache_path) if semantic_cache_path else None
+    if not patch.strip():
+        return RubricScores(
+            test_pass_rate=0.0,
+            diff_minimality=0.0,
+            complexity_delta=0.0,
+            style_score=0.0,
+            semantic_score=0.0,
+        )
 
-    (
-        test_pass_rate,
-        diff_score,
-        complexity_score,
-        style_score_value,
-    ) = await asyncio.gather(
-        asyncio.to_thread(test_pass.score, sandbox_result),
+    cache = Path(semantic_cache_path) if semantic_cache_path else None
+    test_only = patch_only_modifies_tests(patch)
+
+    test_pass_rate = await asyncio.to_thread(test_pass.score, sandbox_result)
+    if test_only:
+        log.info("rubric.test_only_patch", issue_title=issue_title[:80])
+        test_pass_rate = 0.0
+
+    diff_score, complexity_score, style_score_value = await asyncio.gather(
         asyncio.to_thread(diff_minimality.score, patch),
         asyncio.to_thread(complexity.score, patch, repo_path),
         asyncio.to_thread(style.score, patch, repo_path),
     )
 
+    test_tail = sandbox_result.stdout or sandbox_result.stderr
     semantic_score_value = await semantic.score(
         task_issue,
         patch,
         anthropic_client,
+        issue_title=issue_title,
         cache_path=cache,
+        test_pass_rate=test_pass_rate,
+        test_output_tail=test_tail,
+        test_only_patch=test_only,
     )
 
     return RubricScores(

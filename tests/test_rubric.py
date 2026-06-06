@@ -8,7 +8,12 @@ import pytest
 from git import Repo
 
 from coding_eval.rubric import complexity, diff_minimality, semantic, style, test_pass
-from coding_eval.rubric._patch_files import added_lines_text, changed_py_files
+from coding_eval.rubric._patch_files import (
+    added_lines_text,
+    changed_py_files,
+    is_test_file_path,
+    patch_only_modifies_tests,
+)
 from coding_eval.rubric.scorer import WEIGHTS, RubricScores, score
 from coding_eval.sandbox.runner import SandboxResult
 
@@ -50,10 +55,30 @@ def test_test_pass_timeout_or_error() -> None:
     assert test_pass.score(_sandbox("no tests ran", exit_code=0)) == 0.0
 
 
+def test_test_pass_partial_on_failed_exit() -> None:
+    result = _sandbox("43 passed, 1 failed in 0.28s", exit_code=1)
+    assert test_pass.score(result) == pytest.approx(43 / 44)
+
+
 def test_patch_files_helpers() -> None:
     patch = "--- a/foo.py\n+++ b/foo.py\n+added\n-old\n"
     assert changed_py_files(patch) == ["foo.py"]
     assert added_lines_text(patch) == "added"
+
+
+def test_is_test_file_path() -> None:
+    assert is_test_file_path("tests/test_table.py")
+    assert is_test_file_path("test_foo.py")
+    assert not is_test_file_path("rich/pretty.py")
+
+
+def test_patch_only_modifies_tests() -> None:
+    test_patch = "--- a/tests/test_x.py\n+++ b/tests/test_x.py\n+assert True\n"
+    src_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n+pass\n"
+    mixed = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n+pass\n--- a/tests/t.py\n+++ b/tests/t.py\n+x\n"
+    assert patch_only_modifies_tests(test_patch)
+    assert not patch_only_modifies_tests(src_patch)
+    assert not patch_only_modifies_tests(mixed)
 
 
 def test_style_score_clean_and_e501(tmp_path: Path) -> None:
@@ -113,11 +138,116 @@ def test_complexity_apply_failure(tmp_path: Path) -> None:
 def test_semantic_parse_and_clamp() -> None:
     assert semantic._parse_score_from_text('{"score": 0.85, "reasoning": "ok"}') == 0.85
     assert semantic._parse_score_from_text('{"score": 2.0, "reasoning": "high"}') == 1.0
-    assert semantic._parse_score_from_text("not json") == 0.0
+    assert semantic._parse_score_from_text("not json") is None
     assert (
         semantic._parse_score_from_text('text {"score": 0.4, "reasoning": "x"} tail')
         == 0.4
     )
+    nested = '{"score": 0.6, "reasoning": "uses {dict} and [list] in prose"}'
+    assert semantic._parse_score_from_text(nested) == 0.6
+    fenced = '```json\n{"score": 0.75, "reasoning": "good"}\n```'
+    assert semantic._parse_score_from_text(fenced) == 0.75
+
+
+def test_semantic_parse_multiline_broken_json_via_regex() -> None:
+    broken = '{"score": 0.3, "reasoning": "line1\n\n2. bullet"}'
+    assert semantic._parse_score_from_text(broken) == 0.3
+
+
+def test_semantic_parse_prose_with_buried_score() -> None:
+    prose = (
+        "Looking at this issue and patch:\n\n"
+        'The fix is partial. "score": 0.85 would be appropriate.'
+    )
+    assert semantic._parse_score_from_text(prose) == 0.85
+
+
+def test_semantic_parse_regex_clamps_high_score() -> None:
+    assert semantic._extract_score_regex('"score": 2.0') == 1.0
+
+
+def test_semantic_parse_prose_without_score() -> None:
+    assert semantic._parse_score_from_text("Looking at this issue and patch:\n\nNo score here.") is None
+
+
+@pytest.mark.asyncio
+async def test_semantic_test_only_patch_skips_api() -> None:
+    client = AsyncMock()
+    value = await semantic.score(
+        "issue body",
+        "--- a/tests/test_x.py\n+++ b/tests/test_x.py\n+x\n",
+        client,
+        test_only_patch=True,
+    )
+    assert value == 0.0
+    client.messages.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scorer_zeros_test_pass_for_test_only_patch(tmp_path: Path) -> None:
+    client = AsyncMock()
+    client.messages.create = AsyncMock(
+        return_value=MagicMock(
+            content=[MagicMock(type="text", text='{"score": 0.9, "reasoning": "x"}')],
+        ),
+    )
+    test_patch = "--- a/tests/test_x.py\n+++ b/tests/test_x.py\n+assert True\n"
+    sandbox = _sandbox("1 passed in 0.1s")
+    with (
+        mock_patch("coding_eval.rubric.scorer.diff_minimality.score", return_value=0.5),
+        mock_patch("coding_eval.rubric.scorer.complexity.score", return_value=0.5),
+        mock_patch("coding_eval.rubric.scorer.style.score", return_value=0.5),
+    ):
+        result = await score(
+            "issue",
+            test_patch,
+            sandbox,
+            str(tmp_path),
+            client,
+            semantic_cache_path=str(tmp_path / "sem.sqlite"),
+        )
+    assert result.test_pass_rate == 0.0
+    assert result.semantic_score == 0.0
+    client.messages.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_semantic_empty_patch_skips_api() -> None:
+    client = AsyncMock()
+    value = await semantic.score("issue", "", client)
+    assert value == 0.0
+    client.messages.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scorer_empty_patch_zeros_non_test_axes() -> None:
+    client = AsyncMock()
+    sandbox = _sandbox("3 passed in 0.1s")
+    result = await score("issue", "", sandbox, "/tmp", client)
+    assert result.test_pass_rate == 0.0
+    assert result.diff_minimality == 0.0
+    assert result.complexity_delta == 0.0
+    assert result.style_score == 0.0
+    assert result.semantic_score == 0.0
+    assert result.composite == 0.0
+    client.messages.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_semantic_reprompt_on_parse_failure(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.sqlite"
+    client = AsyncMock()
+    client.messages.create = AsyncMock(
+        side_effect=[
+            MagicMock(content=[MagicMock(type="text", text="Looking at this issue and patch:\n\nNo JSON.")]),
+            MagicMock(
+                content=[MagicMock(type="text", text='{"score": 0.72, "reasoning": "good fix"}')],
+            ),
+        ],
+    )
+    value = await semantic.score("issue body", "patch text", client, cache_path=cache_path)
+    assert value == 0.72
+    assert client.messages.create.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -139,9 +269,52 @@ async def test_semantic_score_mocked(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_semantic_score_includes_test_context(tmp_path: Path) -> None:
+    client = AsyncMock()
+    client.messages.create = AsyncMock(
+        return_value=MagicMock(
+            content=[MagicMock(type="text", text='{"score": 0.45, "reasoning": "partial"}')],
+        ),
+    )
+    value = await semantic.score(
+        "issue body",
+        "patch text",
+        client,
+        cache_path=tmp_path / "cache.sqlite",
+        test_pass_rate=0.96,
+        test_output_tail="FAILED tests/test_x.py::test_attrs_broken",
+    )
+    assert value == 0.45
+    call_kwargs = client.messages.create.await_args.kwargs
+    user_content = call_kwargs["messages"][0]["content"]
+    assert "Sandbox test pass rate: 0.96" in user_content
+    assert "test_attrs_broken" in user_content
+
+
+@pytest.mark.asyncio
+async def test_semantic_score_includes_issue_title(tmp_path: Path) -> None:
+    client = AsyncMock()
+    client.messages.create = AsyncMock(
+        return_value=MagicMock(
+            content=[MagicMock(type="text", text='{"score": 0.8, "reasoning": "ok"}')],
+        ),
+    )
+    await semantic.score(
+        "body text",
+        "patch text",
+        client,
+        issue_title="Fix complex highlighting",
+        cache_path=tmp_path / "cache.sqlite",
+    )
+    user_content = client.messages.create.await_args.kwargs["messages"][0]["content"]
+    assert "Title: Fix complex highlighting" in user_content
+    assert "body text" in user_content
+
+
+@pytest.mark.asyncio
 async def test_semantic_cache_read_write(tmp_path: Path) -> None:
     cache_path = tmp_path / "semantic.sqlite"
-    key = semantic._cache_key("issue", "patch")
+    key = semantic._cache_key("title", "issue body", "patch")
     semantic._write_cache(cache_path, key, 0.42)
     assert semantic._read_cache(cache_path, key) == 0.42
     assert semantic._read_cache(cache_path, "missing") is None

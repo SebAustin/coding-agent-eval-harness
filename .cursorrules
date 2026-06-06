@@ -10,7 +10,7 @@ You are pairing with a senior engineer. Write production code. No explanations u
 - Docker SDK docker==7.1.0 for container management. Never subprocess("docker ...").
 - tree-sitter 0.23 for AST analysis. radon 6.0.1 for complexity.
 - sentence-transformers 3.3.1 for contamination embeddings. Model: all-MiniLM-L6-v2.
-- anthropic 0.40.0 (claude-sonnet-4-5-20251022 for judge, claude-opus-4-7 for hard eval).
+- anthropic 0.40.0 (claude-sonnet-4-5-20250929 for judge, claude-opus-4-7 for hard eval).
 - openai 1.53.0 for Codex baseline.
 - langsmith 0.2.10 for run tracing (optional, activated by LANGSMITH_API_KEY).
 
