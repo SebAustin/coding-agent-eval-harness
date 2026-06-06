@@ -52,6 +52,24 @@ def test_read_file_truncates(tmp_path: Path) -> None:
     assert "[truncated" in out
 
 
+def test_read_file_line_range(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path)
+    (repo / "many.py").write_text("".join(f"line{n}\n" for n in range(1, 21)), encoding="utf-8")
+    tools = RepoTools(str(repo))
+    out = tools.dispatch("read_file", {"path": "many.py", "start_line": 5, "end_line": 7})
+    assert "5| line5" in out
+    assert "7| line7" in out
+    assert "line4" not in out
+    assert "line8" not in out
+
+
+def test_read_file_ignores_non_integer_range(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path)
+    tools = RepoTools(str(repo))
+    out = tools.dispatch("read_file", {"path": "typer/_completion_shared.py", "start_line": "x"})
+    assert "1| def resolve_help(text):" in out
+
+
 def test_grep_finds_matches(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     tools = RepoTools(str(repo))

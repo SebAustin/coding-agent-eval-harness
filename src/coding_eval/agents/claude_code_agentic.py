@@ -22,8 +22,22 @@ from coding_eval.patching.validate import patch_py_files_compile
 log = structlog.get_logger(__name__)
 
 MODEL_ID = DEFAULT_AGENT_MODEL
-MAX_TURNS = 16
-MAX_TOKENS = 4096
+MAX_TURNS = 24
+# Final turns where tools are withheld so the model must commit to a diff instead
+# of exploring forever; the reserve also leaves retries if the first apply fails.
+FORCED_DIFF_TURNS = 3
+MAX_TOKENS = 8192
+FORCE_DIFF_NUDGE = (
+    "Tool budget nearly exhausted. After these results, stop exploring and reply "
+    "with ONLY the final unified diff starting with '---'."
+)
+FORCE_DIFF_REPROMPT = (
+    "You can no longer use tools. Based on everything you have already read, commit "
+    "to your best fix now even if you are not fully certain — a concrete diff is far "
+    "better than none. Reply with ONLY a unified diff starting with '--- a/<path>', "
+    "using line numbers and context lines from the files you read. No prose, no "
+    "questions, no markdown fence."
+)
 
 
 class ClaudeCodeAgenticAdapter(AgentAdapter):
@@ -62,7 +76,8 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         patch = ""
 
         for turn in range(MAX_TURNS):
-            message, cost = await self._call(messages, cost)
+            tools_enabled = turn < MAX_TURNS - FORCED_DIFF_TURNS
+            message, cost = await self._call(messages, cost, use_tools=tools_enabled)
             text = message_text(message)
             if text.strip():
                 raw_log.append(text)
@@ -73,6 +88,10 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
             tool_calls = [block for block in message.content if block.type == "tool_use"]
             if tool_calls:
                 results = await self._run_tools(tools, tool_calls, task.task_id)
+                # Warn the model once it is about to lose tool access so it spends
+                # its remaining turns producing the diff, not mid-exploration.
+                if turn + 1 >= MAX_TURNS - FORCED_DIFF_TURNS:
+                    results.append({"type": "text", "text": FORCE_DIFF_NUDGE})
                 messages.append(cast("MessageParam", {"role": "user", "content": results}))
                 continue
 
@@ -81,7 +100,8 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
                 if turn >= MAX_TURNS - 1:
                     break
                 log.info("agentic.no_output_reprompt", task_id=task.task_id, turn=turn + 1)
-                messages.append({"role": "user", "content": AGENTIC_NO_OUTPUT_REPROMPT})
+                reprompt = AGENTIC_NO_OUTPUT_REPROMPT if tools_enabled else FORCE_DIFF_REPROMPT
+                messages.append({"role": "user", "content": reprompt})
                 continue
 
             ok, apply_error = await self._validate_patch(repo_path, patch)
@@ -112,15 +132,26 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         self,
         messages: list[MessageParam],
         cost: float,
+        *,
+        use_tools: bool,
     ) -> tuple[anthropic.types.Message, float]:
-        message = await self._client.messages.create(
-            model=MODEL_ID,
-            max_tokens=MAX_TOKENS,
-            temperature=0,
-            system=AGENTIC_SYSTEM_PROMPT,
-            tools=cast("Any", TOOL_SPECS),
-            messages=messages,
-        )
+        if use_tools:
+            message = await self._client.messages.create(
+                model=MODEL_ID,
+                max_tokens=MAX_TOKENS,
+                temperature=0,
+                system=AGENTIC_SYSTEM_PROMPT,
+                tools=cast("Any", TOOL_SPECS),
+                messages=messages,
+            )
+        else:
+            message = await self._client.messages.create(
+                model=MODEL_ID,
+                max_tokens=MAX_TOKENS,
+                temperature=0,
+                system=AGENTIC_SYSTEM_PROMPT,
+                messages=messages,
+            )
         return message, cost + usage_cost_usd(message.usage)
 
     async def _run_tools(
@@ -162,8 +193,11 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
 def _build_initial_prompt(task: Task, repo_context: str) -> str:
     parts = [
         f"Issue: {task.issue_title}\n\n{task.issue_body}\n\nRepository: {task.repo}",
-        "Use the read_file, grep, and list_dir tools to explore the repository and "
-        "find every file the fix must touch, then reply with the unified diff.",
+        "Use the read_file, grep, and list_dir tools to find every file the fix must "
+        "touch, then reply with the unified diff. Explore efficiently: your tool "
+        "budget is limited, so prefer grep to locate code and read_file with "
+        "start_line/end_line for large files, and stop exploring once you can write "
+        "the fix.",
     ]
     if repo_context:
         parts.append(repo_context)

@@ -106,9 +106,7 @@ async def test_claude_rejects_retry_patch_that_fails_apply_check(tmp_path: Path)
     still_bad_patch = (
         "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-wrong\n+value = 2\n"
     )
-    third_bad_patch = (
-        "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-nope\n+value = 2\n"
-    )
+    third_bad_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-nope\n+value = 2\n"
 
     adapter = ClaudeCodeAdapter(api_key="test-key")
     adapter._client = AsyncMock()

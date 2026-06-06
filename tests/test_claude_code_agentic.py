@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from git import Repo
 
-from coding_eval.agents.claude_code_agentic import MAX_TURNS, ClaudeCodeAgenticAdapter
+from coding_eval.agents.claude_code_agentic import (
+    FORCED_DIFF_TURNS,
+    MAX_TURNS,
+    ClaudeCodeAgenticAdapter,
+)
 from coding_eval.dataset.schema import Task
 
 
@@ -185,3 +189,8 @@ async def test_agentic_gives_up_after_max_turns(tmp_path: Path) -> None:
 
     assert result.patch == ""
     assert adapter._client.messages.create.await_count == MAX_TURNS
+    # Tools are offered while exploring, then withheld on the final turns so the
+    # model must commit to a diff instead of exploring until the budget runs out.
+    calls = adapter._client.messages.create.call_args_list
+    assert all("tools" in call.kwargs for call in calls[: MAX_TURNS - FORCED_DIFF_TURNS])
+    assert all("tools" not in call.kwargs for call in calls[MAX_TURNS - FORCED_DIFF_TURNS :])
