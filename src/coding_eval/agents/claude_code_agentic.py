@@ -7,7 +7,11 @@ import anthropic
 import structlog
 from anthropic.types import MessageParam
 
-from coding_eval.agents._common import message_text, usage_cost_usd
+from coding_eval.agents._common import (
+    create_message_with_retry,
+    message_text,
+    usage_cost_usd,
+)
 from coding_eval.agents.base import AgentAdapter
 from coding_eval.agents.context import format_apply_failure_context, gather_repo_context
 from coding_eval.agents.prompts import AGENTIC_NO_OUTPUT_REPROMPT, AGENTIC_SYSTEM_PROMPT
@@ -142,21 +146,25 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         use_tools: bool,
     ) -> tuple[anthropic.types.Message, float]:
         if use_tools:
-            message = await self._client.messages.create(
-                model=MODEL_ID,
-                max_tokens=MAX_TOKENS,
-                temperature=0,
-                system=AGENTIC_SYSTEM_PROMPT,
-                tools=cast("Any", TOOL_SPECS),
-                messages=messages,
+            message = await create_message_with_retry(
+                lambda: self._client.messages.create(
+                    model=MODEL_ID,
+                    max_tokens=MAX_TOKENS,
+                    temperature=0,
+                    system=AGENTIC_SYSTEM_PROMPT,
+                    tools=cast("Any", TOOL_SPECS),
+                    messages=messages,
+                ),
             )
         else:
-            message = await self._client.messages.create(
-                model=MODEL_ID,
-                max_tokens=MAX_TOKENS,
-                temperature=0,
-                system=AGENTIC_SYSTEM_PROMPT,
-                messages=messages,
+            message = await create_message_with_retry(
+                lambda: self._client.messages.create(
+                    model=MODEL_ID,
+                    max_tokens=MAX_TOKENS,
+                    temperature=0,
+                    system=AGENTIC_SYSTEM_PROMPT,
+                    messages=messages,
+                ),
             )
         return message, cost + usage_cost_usd(message.usage)
 

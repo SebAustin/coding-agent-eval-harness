@@ -49,7 +49,7 @@ module = ["docker", "docker.*", "datasets", "datasets.*", "radon", "radon.*"]
 ignore_missing_imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "INP001", "PT001", "PT023", "TC003", "PLR2004", "S106", "SLF001", "E501", "S108", "ARG002", "PLC0415"]
+"tests/**/*.py" = ["S101", "INP001", "PT001", "PT023", "TC003", "PLR2004", "S106", "SLF001", "E501", "S108", "ARG002", "PLC0415", "EM101", "EM102", "TRY003"]
 "scripts/**/*.py" = ["INP001", "B008", "EXE001", "T201", "PLR2004", "PLR0913", "FBT001", "FBT003"]
 "src/coding_eval/cli.py" = ["B008", "I001", "PLR0913", "RUF100", "S311", "PLR2004"]
 "src/coding_eval/dataset/builder.py" = ["PLR0913", "PLR0912", "PLR0914", "PLR0915", "C901", "PLR2004", "PLW2901"]
