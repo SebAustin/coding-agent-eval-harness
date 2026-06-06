@@ -47,7 +47,7 @@ jobs:
       - name: Build sandbox image
         run: docker build -f Dockerfile.sandbox -t coding-eval-sandbox:latest .
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: coding-eval-sandbox:latest
           format: table
