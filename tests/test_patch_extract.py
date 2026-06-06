@@ -109,6 +109,29 @@ def test_extract_keeps_dropping_truncated_trailing_hunk() -> None:
     assert extract_unified_patch(truncated) == _VALID
 
 
+def test_extract_preserves_second_file_headers() -> None:
+    # A multi-file diff must keep the second file's ---/+++ headers; recounting
+    # hunks once folded them away, merging both files' changes into the first.
+    multi = (
+        "--- a/a.py\n"
+        "+++ b/a.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        " def f():\n"
+        "-    return 1\n"
+        "+    return 2\n"
+        "--- a/b.py\n"
+        "+++ b/b.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        " def g():\n"
+        "-    return 3\n"
+        "+    return 4\n"
+    )
+    extracted = extract_unified_patch(multi)
+    assert "--- a/a.py" in extracted
+    assert "--- a/b.py" in extracted
+    assert extracted.count("@@ -1,2 +1,2 @@") == 2
+
+
 def test_looks_like_diff_attempt() -> None:
     from coding_eval.patching.extract import looks_like_diff_attempt
 

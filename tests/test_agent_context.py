@@ -90,6 +90,35 @@ def test_gather_module_keywords_from_title_and_body(tmp_path: Path) -> None:
     assert "rich/pretty.py" in context
 
 
+def test_gather_follows_import_neighbors_one_hop(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    pkg = repo / "typer"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    # A sibling helper the primary target imports but the issue never names.
+    (pkg / "_completion_shared.py").write_text(
+        "def resolve_help(text):\n    return text\n",
+        encoding="utf-8",
+    )
+    (pkg / "completion.py").write_text(
+        "from typer._completion_shared import resolve_help\n\nLINE = resolve_help('x')\n",
+        encoding="utf-8",
+    )
+
+    context = gather_repo_context(
+        str(repo),
+        [],
+        issue_title="Rich markup in completion help lines",
+        issue_body="The help text in `typer/completion.py` keeps Rich markup.",
+    )
+
+    # The primary target is surfaced from the issue, and its imported sibling is
+    # pulled in via the one-hop expansion even though nothing names it directly.
+    assert "typer/completion.py" in context
+    assert "typer/_completion_shared.py" in context
+    assert "def resolve_help" in context
+
+
 def test_format_patch_target_files(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     pkg = repo / "rich"
