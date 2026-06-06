@@ -68,9 +68,29 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 
 *Contamination: 0/20 tasks flagged vs SWE-bench train. Of the 3 tasks scoring 0,
 all are single-shot agent limits (the model needs to explore multiple files and
-hallucinates context) rather than harness failures — see issue for an agentic
-adapter. Full 50-task contamination analysis:
-[`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+hallucinates context) rather than harness failures — now addressed by the
+tool-using [`claude-code-agentic`](#agents) adapter. Full 50-task contamination
+analysis: [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+
+## Agents
+
+| ID | Strategy | Cost/task | When to use |
+|---|---|---|---|
+| `claude-code` | Single-shot: fixed repo-context prompt → one diff (+ apply-check retries) | ~$0.09 | Default; fast and cheap for fixes whose context fits up front. |
+| `claude-code-agentic` | Tool-using: read-only `read_file`/`grep`/`list_dir` over the clone, loops until it emits an applicable diff | ~$1–2 | Multi-file fixes that need codebase exploration (e.g. a helper + its callers). |
+| `aider` | Subprocess wrapper around the `aider` CLI | — | External-tool comparison. |
+
+```bash
+# Single-shot (default)
+uv run coding-eval run --agents claude-code --limit 5
+
+# Tool-using agentic variant — explores the repo before patching
+uv run coding-eval run --agents claude-code-agentic --tasks-file data/tasks/typer-0822.jsonl
+```
+
+The agentic adapter is bounded by `MAX_TURNS` (call count), `MAX_COST_USD` (spend),
+and a per-task wall-clock timeout (`CODING_EVAL_AGENT_TIMEOUT_S`, default 600s). Docker
+sandbox execution is unchanged — only host-side patch generation gains tools.
 
 ## Documentation
 

@@ -9,6 +9,7 @@ from git import Repo
 
 from coding_eval.agents.claude_code_agentic import (
     FORCED_DIFF_TURNS,
+    MAX_COST_USD,
     MAX_TURNS,
     ClaudeCodeAgenticAdapter,
 )
@@ -174,6 +175,27 @@ async def test_agentic_reprompts_when_no_tool_and_no_diff(tmp_path: Path) -> Non
 
     assert "typer/completion.py" in result.patch
     assert adapter._client.messages.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_agentic_stops_at_cost_ceiling(tmp_path: Path) -> None:
+    repo = _completion_repo(tmp_path)
+    # One response whose token usage alone blows past the USD ceiling.
+    per_call = int((MAX_COST_USD + 1.0) / 3.0 * 1_000_000)
+    expensive = MagicMock(
+        content=[_text_block("still exploring, no diff")],
+        usage=MagicMock(input_tokens=per_call, output_tokens=0),
+    )
+    adapter = ClaudeCodeAgenticAdapter(api_key="test-key")
+    adapter._client = AsyncMock()
+    adapter._client.messages.create = AsyncMock(return_value=expensive)
+
+    result = await adapter.solve(_task(), str(repo))
+
+    assert result.patch == ""
+    assert result.cost_usd >= MAX_COST_USD
+    # Stops well before the turn cap once spend crosses the ceiling.
+    assert adapter._client.messages.create.await_count == 1
 
 
 @pytest.mark.asyncio

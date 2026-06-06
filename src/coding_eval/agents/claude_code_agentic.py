@@ -27,6 +27,9 @@ MAX_TURNS = 24
 # of exploring forever; the reserve also leaves retries if the first apply fails.
 FORCED_DIFF_TURNS = 3
 MAX_TOKENS = 8192
+# Hard USD backstop: tool exploration accumulates context, so cost grows per turn
+# even though MAX_TURNS bounds the call count. Stop the loop if spend crosses this.
+MAX_COST_USD = 4.0
 FORCE_DIFF_NUDGE = (
     "Tool budget nearly exhausted. After these results, stop exploring and reply "
     "with ONLY the final unified diff starting with '---'."
@@ -76,6 +79,9 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         patch = ""
 
         for turn in range(MAX_TURNS):
+            if cost >= MAX_COST_USD:
+                log.warning("agentic.cost_ceiling", task_id=task.task_id, cost_usd=round(cost, 4))
+                break
             tools_enabled = turn < MAX_TURNS - FORCED_DIFF_TURNS
             message, cost = await self._call(messages, cost, use_tools=tools_enabled)
             text = message_text(message)
