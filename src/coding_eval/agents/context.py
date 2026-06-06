@@ -393,6 +393,15 @@ def gather_repo_context(
     for mentioned in _paths_from_issue(root, issue_text):
         add(mentioned)
 
+    # One more hop: a fix often spans a primary target and a sibling it imports
+    # (e.g. completion.py and its _completion_shared helper). Follow imports from
+    # the source files gathered so far so multi-file fixes have that context up
+    # front. Neighbours are added last, so they only consume leftover budget.
+    for source_path in [path for path in list(ordered) if not path.name.startswith("test_")]:
+        source = source_path.read_text(encoding="utf-8", errors="replace")
+        for neighbor in _paths_from_imports(root, source):
+            add(neighbor)
+
     keywords = extract_keywords(issue_title, issue_body, test_sources)
 
     sections: list[str] = []

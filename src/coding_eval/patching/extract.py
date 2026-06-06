@@ -103,6 +103,10 @@ def _recount_hunks(lines: list[str]) -> list[str]:
     while idx < len(lines):
         line = lines[idx]
         if not line.startswith("@@"):
+            # Non-hunk lines between hunks are the file headers (--- / +++ /
+            # diff --git) of a subsequent file in a multi-file diff; keep them so
+            # the second file's changes aren't silently folded into the first.
+            kept.append(line)
             idx += 1
             continue
         match = _HUNK_HEADER_RE.match(line)

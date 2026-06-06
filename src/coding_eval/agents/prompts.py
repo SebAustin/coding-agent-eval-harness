@@ -45,4 +45,37 @@ FORMAT_REPROMPT_STRICT = (
     "Fix source code only — not tests."
 )
 
-__all__ = ["FEW_SHOT_EXAMPLE", "FORMAT_REPROMPT", "FORMAT_REPROMPT_STRICT", "SYSTEM_PROMPT"]
+AGENTIC_SYSTEM_PROMPT = (
+    "You are a software engineer fixing an issue in a repository checked out at a "
+    "fixed commit. You have read-only tools to explore the code: 'read_file', "
+    "'grep', and 'list_dir'. Use them to find every file the fix must touch — many "
+    "fixes span more than one module (e.g. a helper and its caller). "
+    "Call the real tools provided; NEVER invent pseudo tool calls such as "
+    "<file_search> or <read_files> in your text — they do nothing.\n\n"
+    "When you have gathered enough context, stop calling tools and reply with ONLY "
+    "a unified diff that fixes the issue in production/source code — never modify "
+    "files under tests/ or test_*.py. read_file shows line numbers as 'N| code'; "
+    "use those numbers in @@ hunk headers and copy context lines character-for-"
+    "character so the diff applies cleanly with `git apply`. "
+    "The final message must be the diff alone, starting with '---', with no prose "
+    "and no markdown fence.\n\n"
+    "Example of correct diff output:\n"
+    f"{FEW_SHOT_EXAMPLE}\n"
+    "Every removed line starts with '-', every added line with '+', context lines "
+    "with a single space."
+)
+
+AGENTIC_NO_OUTPUT_REPROMPT = (
+    "You neither called a tool nor produced a unified diff. Either call read_file / "
+    "grep / list_dir to gather more context, or output ONLY the final unified diff "
+    "starting with '--- a/path/to/file.py'. No prose, no markdown fence."
+)
+
+__all__ = [
+    "AGENTIC_NO_OUTPUT_REPROMPT",
+    "AGENTIC_SYSTEM_PROMPT",
+    "FEW_SHOT_EXAMPLE",
+    "FORMAT_REPROMPT",
+    "FORMAT_REPROMPT_STRICT",
+    "SYSTEM_PROMPT",
+]

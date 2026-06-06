@@ -15,11 +15,7 @@ def usage_cost_usd(usage: anthropic.types.Usage) -> float:
 
 
 def message_text(message: anthropic.types.Message) -> str:
-    parts: list[str] = []
-    for block in message.content:
-        if block.type == "text":
-            parts.append(block.text)
-    return "\n".join(parts)
+    return "\n".join(block.text for block in message.content if block.type == "text")
 
 
 __all__ = [
