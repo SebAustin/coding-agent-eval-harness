@@ -31,8 +31,7 @@ def target_tests_failed(test_files: list[str], pytest_output: str) -> bool:
 
 def pytest_has_syntax_error(pytest_output: str) -> bool:
     return (
-        "SyntaxError:" in pytest_output
-        or "Interrupted: 1 error during collection" in pytest_output
+        "SyntaxError:" in pytest_output or "Interrupted: 1 error during collection" in pytest_output
     )
 
 

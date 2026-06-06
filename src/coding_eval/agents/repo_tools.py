@@ -33,8 +33,19 @@ _SKIP_DIRS = frozenset(
 )
 _TEXT_SUFFIXES = frozenset(
     {
-        ".py", ".pyi", ".txt", ".md", ".rst", ".cfg", ".ini", ".toml",
-        ".json", ".yaml", ".yml", ".in", ".sh",
+        ".py",
+        ".pyi",
+        ".txt",
+        ".md",
+        ".rst",
+        ".cfg",
+        ".ini",
+        ".toml",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".in",
+        ".sh",
     },
 )
 
