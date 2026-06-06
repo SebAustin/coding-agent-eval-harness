@@ -8,7 +8,7 @@ def _count_changed_lines(patch: str) -> int:
     for line in patch.splitlines():
         if line.startswith(("---", "+++")):
             continue
-        if line.startswith("+") or line.startswith("-"):
+        if line.startswith(("+", "-")):
             count += 1
     return count
 

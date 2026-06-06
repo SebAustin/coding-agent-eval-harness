@@ -23,7 +23,17 @@ def parse_test_results(pytest_stdout: str) -> tuple[int, int]:
     return passed, total
 
 
-def compute_test_pass_rate(sandbox_result: SandboxResult) -> float:
+def compute_test_pass_rate(
+    sandbox_result: SandboxResult,
+    *,
+    test_files: list[str] | None = None,
+) -> float:
+    output = f"{sandbox_result.stdout}\n{sandbox_result.stderr}"
+    if test_files:
+        from coding_eval.rubric.test_output import target_tests_failed
+
+        if target_tests_failed(test_files, output):
+            return 0.0
     passed, total = parse_test_results(sandbox_result.stdout)
     if total == 0:
         return 0.0

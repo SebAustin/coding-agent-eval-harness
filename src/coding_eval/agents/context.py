@@ -5,7 +5,7 @@ from pathlib import Path
 
 MAX_CHARS_PER_FILE = 12_000
 MAX_TOTAL_CHARS = 48_000
-MAX_RETRY_FILE_CHARS = 8_000
+MAX_RETRY_FILE_CHARS = 12_000
 
 _IMPORT_FROM_RE = re.compile(r"^\s*from ([\w.]+) import\b")
 _IMPORT_RE = re.compile(r"^\s*import ([\w.]+)\b")
@@ -19,15 +19,13 @@ _FROM_PKG_IMPORT_RE = re.compile(r"from ([\w]+) import ([\w.]+)")
 _DOTTED_MODULE_RE = re.compile(r"\b([\w]+)\.([\w]+)\b")
 _PATCH_OLD_FILE_RE = re.compile(r"^--- (?:a/)?(.+)$")
 _APPLY_FAIL_RE = re.compile(r"error: patch failed: ([^:\n]+):(\d+)")
-_CONTEXT_WINDOW = 40
+_CONTEXT_WINDOW = 60
 
 
 def _format_numbered(source: str, *, start_line: int = 1) -> str:
     lines = source.splitlines()
     width = len(str(start_line + len(lines) - 1)) if lines else 1
-    return "\n".join(
-        f"{idx:>{width}}| {line}" for idx, line in enumerate(lines, start=start_line)
-    )
+    return "\n".join(f"{idx:>{width}}| {line}" for idx, line in enumerate(lines, start=start_line))
 
 
 def _read_numbered_bounded(path: Path, *, limit: int, start_line: int = 1) -> str:
@@ -42,10 +40,7 @@ def _read_numbered_bounded(path: Path, *, limit: int, start_line: int = 1) -> st
 
 
 def _parse_apply_failures(apply_error: str) -> list[tuple[str, int]]:
-    return [
-        (path.strip(), int(line_no))
-        for path, line_no in _APPLY_FAIL_RE.findall(apply_error)
-    ]
+    return [(path.strip(), int(line_no)) for path, line_no in _APPLY_FAIL_RE.findall(apply_error)]
 
 
 def _read_line_window(path: Path, center_line: int, *, window: int = _CONTEXT_WINDOW) -> str:
@@ -188,7 +183,7 @@ def format_patch_target_files(
     root = Path(repo_path)
     sections: list[str] = []
     failures = _parse_apply_failures(apply_error)
-    failure_by_file = {rel: line_no for rel, line_no in failures}
+    failure_by_file = dict(failures)
 
     for rel in paths_from_patch(patch):
         path = root / rel
@@ -248,7 +243,7 @@ def gather_repo_context(
     for rel in test_files:
         add(root / rel)
 
-    for test_path in list(ordered):
+    for test_path in ordered:
         if not test_path.name.startswith("test_"):
             continue
         source = test_path.read_text(encoding="utf-8", errors="replace")
@@ -273,8 +268,11 @@ def gather_repo_context(
 
     if not sections:
         return ""
-    return "Relevant repository files at base commit (line numbers shown as N| code):\n\n" + "\n\n".join(
-        sections,
+    return (
+        "Relevant repository files at base commit (line numbers shown as N| code):\n\n"
+        + "\n\n".join(
+            sections,
+        )
     )
 
 

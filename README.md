@@ -63,6 +63,13 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 
 *Contamination rate: 8/50 tasks (16%) flagged vs SWE-bench train. Clean-subset n=42.*
 
+## Documentation
+
+- [Methodology](docs/methodology.md) — task selection, contamination, judge model
+- [Rubric design](docs/rubric_design.md) — per-axis formulas and weights
+- [Contamination analysis](docs/contamination_analysis.md) — threshold and overlap stats
+- [Adding agents](docs/adding_agents.md) — register a new `AgentAdapter`
+
 ## Sources
 
 1. Jimenez et al. "SWE-bench: Can Language Models Resolve Real-World GitHub Issues?" ICLR 2024.

@@ -13,4 +13,3 @@ __all__ = [
     "style",
     "test_pass",
 ]
-

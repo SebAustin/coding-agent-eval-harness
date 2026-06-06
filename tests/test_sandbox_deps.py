@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from coding_eval.sandbox.deps import (
     WHEELS_DIR,
@@ -13,6 +12,9 @@ from coding_eval.sandbox.deps import (
     prepare_offline_wheels,
     wheel_cache_root,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_install_specs_from_pyproject(tmp_path: Path) -> None:
@@ -45,7 +47,7 @@ def test_poetry_runtime_packages(tmp_path: Path) -> None:
     from coding_eval.sandbox.deps import _poetry_packages
 
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.poetry.dependencies]\npython = \">=3.8\"\nclick = \"^8.0\"\n",
+        '[tool.poetry.dependencies]\npython = ">=3.8"\nclick = "^8.0"\n',
         encoding="utf-8",
     )
     pkgs = _poetry_packages(tmp_path, section="runtime")
@@ -56,7 +58,7 @@ def test_poetry_dev_packages(tmp_path: Path) -> None:
     from coding_eval.sandbox.deps import _poetry_packages
 
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.poetry.dev-dependencies]\nattrs = \"^21.0\"\n",
+        '[tool.poetry.dev-dependencies]\nattrs = "^21.0"\n',
         encoding="utf-8",
     )
     assert "attrs" in _poetry_packages(tmp_path, section="dev")
@@ -88,7 +90,9 @@ def test_prepare_offline_wheels_uses_cache(
     cache_dir.mkdir(parents=True)
     (cache_dir / "attrs.whl").touch()
 
-    assert prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is True
+    assert (
+        prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is True
+    )
     assert (tmp_path / WHEELS_DIR / "attrs.whl").is_file()
     mock_run.assert_not_called()
 
@@ -111,7 +115,9 @@ def test_prepare_offline_wheels_downloads_on_cache_miss(
 
     mock_run.side_effect = _download
 
-    assert prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is True
+    assert (
+        prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is True
+    )
     assert (tmp_path / WHEELS_DIR / "click.whl").is_file()
     mock_run.assert_called()
 
@@ -126,5 +132,7 @@ def test_prepare_offline_wheels_returns_false_when_all_specs_fail(
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
     mock_run.return_value = subprocess.CompletedProcess([], 1, "", "network error")
 
-    assert prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is False
+    assert (
+        prepare_offline_wheels(tmp_path, repo_id="Textualize/rich", commit="abc123456789") is False
+    )
     assert not has_offline_wheels(tmp_path)

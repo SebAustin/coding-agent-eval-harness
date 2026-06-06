@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch as mock_patch
+from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import patch as mock_patch
 
 import pytest
 from git import Repo
@@ -60,6 +61,15 @@ def test_test_pass_partial_on_failed_exit() -> None:
     assert test_pass.score(result) == pytest.approx(43 / 44)
 
 
+def test_test_pass_zeros_when_task_test_file_failed() -> None:
+    output = (
+        "FAILED tests/test_pretty.py::test_attrs_broken - AssertionError\n"
+        "43 passed, 1 failed in 0.28s"
+    )
+    result = _sandbox(output, exit_code=1)
+    assert test_pass.score(result, test_files=["tests/test_pretty.py"]) == 0.0
+
+
 def test_patch_files_helpers() -> None:
     patch = "--- a/foo.py\n+++ b/foo.py\n+added\n-old\n"
     assert changed_py_files(patch) == ["foo.py"]
@@ -82,11 +92,7 @@ def test_patch_only_modifies_tests() -> None:
 
 
 def test_style_score_clean_and_e501(tmp_path: Path) -> None:
-    clean_patch = (
-        "--- a/x.py\n+++ b/x.py\n"
-        "+def ok() -> None:\n"
-        "+    return None\n"
-    )
+    clean_patch = "--- a/x.py\n+++ b/x.py\n" "+def ok() -> None:\n" "+    return None\n"
     assert style.score(clean_patch, str(tmp_path)) == 1.0
 
     padding = "a" * 96
@@ -139,10 +145,7 @@ def test_semantic_parse_and_clamp() -> None:
     assert semantic._parse_score_from_text('{"score": 0.85, "reasoning": "ok"}') == 0.85
     assert semantic._parse_score_from_text('{"score": 2.0, "reasoning": "high"}') == 1.0
     assert semantic._parse_score_from_text("not json") is None
-    assert (
-        semantic._parse_score_from_text('text {"score": 0.4, "reasoning": "x"} tail')
-        == 0.4
-    )
+    assert semantic._parse_score_from_text('text {"score": 0.4, "reasoning": "x"} tail') == 0.4
     nested = '{"score": 0.6, "reasoning": "uses {dict} and [list] in prose"}'
     assert semantic._parse_score_from_text(nested) == 0.6
     fenced = '```json\n{"score": 0.75, "reasoning": "good"}\n```'
@@ -167,7 +170,10 @@ def test_semantic_parse_regex_clamps_high_score() -> None:
 
 
 def test_semantic_parse_prose_without_score() -> None:
-    assert semantic._parse_score_from_text("Looking at this issue and patch:\n\nNo score here.") is None
+    assert (
+        semantic._parse_score_from_text("Looking at this issue and patch:\n\nNo score here.")
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -239,7 +245,11 @@ async def test_semantic_reprompt_on_parse_failure(tmp_path: Path) -> None:
     client = AsyncMock()
     client.messages.create = AsyncMock(
         side_effect=[
-            MagicMock(content=[MagicMock(type="text", text="Looking at this issue and patch:\n\nNo JSON.")]),
+            MagicMock(
+                content=[
+                    MagicMock(type="text", text="Looking at this issue and patch:\n\nNo JSON.")
+                ]
+            ),
             MagicMock(
                 content=[MagicMock(type="text", text='{"score": 0.72, "reasoning": "good fix"}')],
             ),
@@ -408,3 +418,36 @@ def test_semantic_ensure_cache_table(tmp_path: Path) -> None:
     with sqlite3.connect(cache_path) as conn:
         semantic._ensure_cache_table(conn)
     assert cache_path.exists()
+
+
+def test_target_tests_failed_detects_task_test_file() -> None:
+    from coding_eval.rubric.test_output import target_tests_failed
+
+    output = (
+        "FAILED tests/test_pretty.py::test_attrs_broken - AssertionError\n"
+        "1 failed, 25 passed in 0.21s"
+    )
+    assert target_tests_failed(["tests/test_pretty.py"], output) is True
+    assert target_tests_failed(["tests/test_other.py"], output) is False
+
+
+def test_semantic_calibrate_caps_partial_target_failure() -> None:
+    output = "FAILED tests/test_pretty.py::test_attrs_broken\n1 failed, 25 passed"
+    calibrated = semantic._calibrate_score(
+        1.0,
+        test_pass_rate=25 / 26,
+        test_output_tail=output,
+        test_files=["tests/test_pretty.py"],
+    )
+    assert calibrated == 0.35
+
+
+def test_semantic_calibrate_caps_syntax_error() -> None:
+    output = "SyntaxError: 'break' outside loop\nERROR tests/test_pretty.py"
+    calibrated = semantic._calibrate_score(
+        0.9,
+        test_pass_rate=0.0,
+        test_output_tail=output,
+        test_files=["tests/test_pretty.py"],
+    )
+    assert calibrated == 0.05

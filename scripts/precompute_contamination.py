@@ -67,8 +67,7 @@ def main(
     rows = _load_train_split()
 
     texts = [
-        _embedding_text(str(row["instance_id"]), str(row["problem_statement"]))
-        for row in rows
+        _embedding_text(str(row["instance_id"]), str(row["problem_statement"])) for row in rows
     ]
     n = len(texts)
     log.info("contamination.embed_start", n_instances=n, model=MODEL_NAME)

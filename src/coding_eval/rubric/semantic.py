@@ -11,12 +11,13 @@ import anthropic
 import structlog
 
 from coding_eval.models import DEFAULT_JUDGE_MODEL
+from coding_eval.rubric.test_output import pytest_has_syntax_error, target_tests_failed
 
 log = structlog.get_logger(__name__)
 
 MODEL_ID = DEFAULT_JUDGE_MODEL
 DEFAULT_CACHE_PATH = Path("data/semantic_cache.sqlite")
-CACHE_VERSION = "v5"
+CACHE_VERSION = "v6"
 
 ParseMethod = Literal["json", "regex", "reprompt_json", "reprompt_regex", "failed"]
 
@@ -36,7 +37,7 @@ SYSTEM_PROMPT = (
 )
 
 JUDGE_REPROMPT = (
-    'Your previous reply was not valid JSON. Reply with ONLY a single-line JSON object: '
+    "Your previous reply was not valid JSON. Reply with ONLY a single-line JSON object: "
     '{"score": 0.0, "reasoning": "brief one-line reason"}'
 )
 
@@ -48,13 +49,33 @@ def _cache_key(
     *,
     test_pass_rate: float | None = None,
     test_only_patch: bool = False,
+    test_files: tuple[str, ...] = (),
 ) -> str:
     test_hint = "" if test_pass_rate is None else f":tpr={test_pass_rate:.4f}"
     cheat_hint = ":test_only" if test_only_patch else ""
+    files_hint = f":tf={','.join(sorted(test_files))}" if test_files else ""
     material = (
-        f"{CACHE_VERSION}:{issue_title}:{issue_body}:{patch[:500]}{test_hint}{cheat_hint}"
+        f"{CACHE_VERSION}:{issue_title}:{issue_body}:{patch[:500]}"
+        f"{test_hint}{cheat_hint}{files_hint}"
     )
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+def _calibrate_score(
+    judge_score: float,
+    *,
+    test_pass_rate: float | None,
+    test_output_tail: str,
+    test_files: list[str],
+) -> float:
+    score = judge_score
+    if pytest_has_syntax_error(test_output_tail):
+        return min(score, 0.05)
+    if test_pass_rate is not None and test_pass_rate < 1.0:
+        if target_tests_failed(test_files, test_output_tail):
+            return min(score, 0.35)
+        return min(score, 0.55)
+    return score
 
 
 def _ensure_cache_table(conn: sqlite3.Connection) -> None:
@@ -203,12 +224,14 @@ async def score(
     test_pass_rate: float | None = None,
     test_output_tail: str = "",
     test_only_patch: bool = False,
+    test_files: list[str] | None = None,
 ) -> float:
     if not patch.strip():
         return 0.0
     if test_only_patch:
         return 0.0
 
+    files = tuple(test_files or ())
     path = cache_path or DEFAULT_CACHE_PATH
     key = _cache_key(
         issue_title,
@@ -216,6 +239,7 @@ async def score(
         patch,
         test_pass_rate=test_pass_rate,
         test_only_patch=test_only_patch,
+        test_files=files,
     )
     cached = _read_cache(path, key)
     if cached is not None:
@@ -255,10 +279,16 @@ async def score(
     if parsed is None:
         result = 0.0
     else:
-        result = parsed
+        result = _calibrate_score(
+            parsed,
+            test_pass_rate=test_pass_rate,
+            test_output_tail=test_output_tail,
+            test_files=list(files),
+        )
         log.info(
             "semantic.scored",
             score=result,
+            judge_score=parsed,
             test_pass_rate=test_pass_rate,
             parse_method=method,
         )

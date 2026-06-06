@@ -38,5 +38,20 @@ def test_compute_test_pass_rate_partial_failure() -> None:
     assert compute_test_pass_rate(result) == pytest.approx(43 / 44)
 
 
+def test_compute_test_pass_rate_zeros_when_task_test_failed() -> None:
+    result = SandboxResult(
+        exit_code=1,
+        stdout=(
+            "FAILED tests/test_pretty.py::test_attrs_broken - AssertionError\n"
+            "43 passed, 1 failed in 0.28s"
+        ),
+        stderr="",
+        duration_ms=280.0,
+        timed_out=False,
+    )
+    assert compute_test_pass_rate(result, test_files=["tests/test_pretty.py"]) == 0.0
+    assert compute_test_pass_rate(result) == pytest.approx(43 / 44)
+
+
 def test_parse_test_results_empty() -> None:
     assert parse_test_results("") == (0, 0)

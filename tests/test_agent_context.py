@@ -106,11 +106,13 @@ def test_format_patch_target_files_apply_error_window(tmp_path: Path) -> None:
     pkg.mkdir(parents=True)
     lines = [f"line_{idx} = {idx}\n" for idx in range(1, 120)]
     (pkg / "style.py").write_text("".join(lines), encoding="utf-8")
-    patch = "--- a/rich/style.py\n+++ b/rich/style.py\n@@ -50 +50 @@\n-line_50\n+line_50 = 99\n"
-    apply_error = "error: patch failed: rich/style.py:50\nerror: rich/style.py: patch does not apply"
+    patch = "--- a/rich/style.py\n+++ b/rich/style.py\n@@ -80 +80 @@\n-line_80\n+line_80 = 99\n"
+    apply_error = (
+        "error: patch failed: rich/style.py:80\nerror: rich/style.py: patch does not apply"
+    )
     formatted = format_patch_target_files(str(repo), patch, apply_error=apply_error)
-    assert "apply failed near line 50" in formatted
-    assert "50| line_50" in formatted
+    assert "apply failed near line 80" in formatted
+    assert "80| line_80" in formatted
     assert "line_1 =" not in formatted
 
 

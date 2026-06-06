@@ -102,7 +102,7 @@ def offline_install_shell() -> str:
     """Shell fragment: install all cached wheels; project code comes from /workspace."""
     return (
         "for w in .eval_wheels/*.whl .eval_wheels/*.tar.gz; do "
-        "[ -f \"$w\" ] && pip install -q --no-index --find-links=.eval_wheels \"$w\" || true; "
+        '[ -f "$w" ] && pip install -q --no-index --find-links=.eval_wheels "$w" || true; '
         "done"
     )
 

@@ -18,12 +18,14 @@ from coding_eval.dataset.schema import Task
 from coding_eval.models import DEFAULT_AGENT_MODEL
 from coding_eval.patching.extract import extract_unified_patch, looks_like_diff_attempt
 from coding_eval.patching.git_apply import check_unified_diff
+from coding_eval.patching.validate import patch_py_files_compile
 
 log = structlog.get_logger(__name__)
 
 MODEL_ID = DEFAULT_AGENT_MODEL
 INPUT_USD_PER_MTOK = 3.0
 OUTPUT_USD_PER_MTOK = 15.0
+MAX_APPLY_ATTEMPTS = 3
 
 
 class ClaudeCodeAdapter(AgentAdapter):
@@ -50,67 +52,79 @@ class ClaudeCodeAdapter(AgentAdapter):
 
         raw, cost = await self._append_completion(messages, cost)
         raw_log.append(raw)
-        patch, cost, fixup_raw = await self._extract_with_format_fixup(messages, raw, cost)
+        patch, cost, fixup_raw = await self._extract_with_format_fixup(
+            messages,
+            raw,
+            cost,
+            fallback_raws=[raw],
+        )
         if fixup_raw:
             raw_log.append(f"--- format fixup ---\n{fixup_raw}")
 
-        ok, apply_error = await asyncio.to_thread(check_unified_diff, repo_path, patch)
-        if ok or not patch.strip():
-            return AgentSolveResult(
-                patch=patch,
-                cost_usd=cost,
-                raw_response=_join_raw_log(raw_log),
-            )
+        for attempt in range(MAX_APPLY_ATTEMPTS):
+            if not patch.strip():
+                break
 
-        log.info(
-            "agent.apply_check_failed",
-            task_id=task.task_id,
-            error=apply_error[:500],
-        )
-        messages.append(
-            {
-                "role": "user",
-                "content": _build_retry_prompt(
-                    task=task,
-                    repo_path=repo_path,
-                    apply_error=apply_error,
-                    previous_patch=patch,
-                ),
-            },
-        )
-        retry_raw, cost = await self._append_completion(messages, cost)
-        raw_log.append(f"--- retry ---\n{retry_raw}")
-        retry_patch, cost, retry_fixup_raw = await self._extract_with_format_fixup(
-            messages,
-            retry_raw,
-            cost,
-        )
-        if retry_fixup_raw:
-            raw_log.append(f"--- format fixup (retry) ---\n{retry_fixup_raw}")
-
-        if retry_patch.strip():
-            retry_ok, retry_error = await asyncio.to_thread(
-                check_unified_diff,
-                repo_path,
-                retry_patch,
-            )
-            if retry_ok:
+            ok, apply_error = await self._validate_patch(repo_path, patch)
+            if ok:
                 return AgentSolveResult(
-                    patch=retry_patch,
+                    patch=patch,
                     cost_usd=cost,
                     raw_response=_join_raw_log(raw_log),
                 )
+
             log.info(
-                "agent.retry_apply_check_failed",
+                "agent.apply_check_failed" if attempt == 0 else "agent.retry_apply_check_failed",
                 task_id=task.task_id,
-                error=retry_error[:500],
+                attempt=attempt + 1,
+                error=apply_error[:500],
             )
+
+            if attempt >= MAX_APPLY_ATTEMPTS - 1:
+                break
+
+            messages.append(
+                {
+                    "role": "user",
+                    "content": _build_retry_prompt(
+                        task=task,
+                        repo_path=repo_path,
+                        apply_error=apply_error,
+                        previous_patch=patch,
+                        attempt=attempt + 2,
+                    ),
+                },
+            )
+            retry_raw, cost = await self._append_completion(messages, cost)
+            raw_log.append(f"--- retry {attempt + 2} ---\n{retry_raw}")
+            patch, cost, retry_fixup_raw = await self._extract_with_format_fixup(
+                messages,
+                retry_raw,
+                cost,
+                fallback_raws=[retry_raw, raw],
+            )
+            if retry_fixup_raw:
+                raw_log.append(f"--- format fixup (retry {attempt + 2}) ---\n{retry_fixup_raw}")
 
         return AgentSolveResult(
             patch="",
             cost_usd=cost,
             raw_response=_join_raw_log(raw_log),
         )
+
+    async def _validate_patch(self, repo_path: str, patch: str) -> tuple[bool, str]:
+        ok, error = await asyncio.to_thread(check_unified_diff, repo_path, patch)
+        if not ok:
+            return False, error
+        compile_ok, compile_error = await asyncio.to_thread(
+            patch_py_files_compile,
+            repo_path,
+            patch,
+        )
+        if not compile_ok:
+            log.info("agent.py_compile_failed", error=compile_error[:500])
+            return False, compile_error
+        return True, ""
 
     async def _append_completion(
         self,
@@ -133,6 +147,8 @@ class ClaudeCodeAdapter(AgentAdapter):
         messages: list[MessageParam],
         raw: str,
         cost: float,
+        *,
+        fallback_raws: list[str] | None = None,
     ) -> tuple[str, float, str]:
         patch = extract_unified_patch(raw)
         if patch.strip() or not looks_like_diff_attempt(raw):
@@ -140,7 +156,9 @@ class ClaudeCodeAdapter(AgentAdapter):
 
         fixup_log: list[str] = []
         for attempt, reprompt in enumerate((FORMAT_REPROMPT, FORMAT_REPROMPT_STRICT), start=1):
-            log.info("agent.format_reprompt", reason="extract_empty_with_diff_marker", attempt=attempt)
+            log.info(
+                "agent.format_reprompt", reason="extract_empty_with_diff_marker", attempt=attempt
+            )
             messages.append({"role": "user", "content": reprompt})
             fix_raw, cost = await self._append_completion(messages, cost)
             fixup_log.append(fix_raw)
@@ -149,6 +167,12 @@ class ClaudeCodeAdapter(AgentAdapter):
                 return patch, cost, "\n\n".join(fixup_log)
             if not looks_like_diff_attempt(fix_raw):
                 break
+
+        for fallback in fallback_raws or []:
+            patch = extract_unified_patch(fallback)
+            if patch.strip():
+                log.info("agent.extract_fallback_raw")
+                return patch, cost, "\n\n".join(fixup_log)
 
         return "", cost, "\n\n".join(fixup_log)
 
@@ -168,6 +192,7 @@ def _build_retry_prompt(
     repo_path: str,
     apply_error: str,
     previous_patch: str,
+    attempt: int,
 ) -> str:
     failure_slices = format_apply_failure_context(repo_path, apply_error)
     file_slices = format_patch_target_files(
@@ -176,7 +201,7 @@ def _build_retry_prompt(
         apply_error=apply_error,
     )
     parts = [
-        "Your previous patch failed `git apply --check`.",
+        f"Your previous patch failed validation (attempt {attempt - 1}/{MAX_APPLY_ATTEMPTS}).",
         "The hunk line numbers and context lines MUST match the numbered source below exactly.",
         f"Apply error:\n{apply_error}",
         f"Previous patch:\n{previous_patch}",
@@ -217,4 +242,4 @@ def _usage_cost_usd(usage: anthropic.types.Usage) -> float:
     return (input_tokens * INPUT_USD_PER_MTOK + output_tokens * OUTPUT_USD_PER_MTOK) / 1_000_000
 
 
-__all__ = ["ClaudeCodeAdapter", "MODEL_ID"]
+__all__ = ["MAX_APPLY_ATTEMPTS", "MODEL_ID", "ClaudeCodeAdapter"]

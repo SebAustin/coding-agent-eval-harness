@@ -2,24 +2,130 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - "results/leaderboard.md"
+      - "results/leaderboard.json"
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-extras
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: Mypy
+        run: uv run mypy --strict src/
+
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: Ruff
-        run: ruff check .
-      - name: Mypy
-        run: mypy src
+        run: uv sync --all-extras
       - name: Pytest
-        run: pytest
+        run: uv run pytest
 
+  docker-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sandbox image
+        run: docker build -f Dockerfile.sandbox -t coding-eval-sandbox:latest .
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: coding-eval-sandbox:latest
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  smoke-eval:
+    runs-on: ubuntu-latest
+    needs: [lint, test, docker-sandbox]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-extras
+      - name: Build sandbox image
+        run: docker build -f Dockerfile.sandbox -t coding-eval-sandbox:latest .
+      - name: Fetch main baseline leaderboard
+        run: |
+          mkdir -p baseline
+          git fetch origin main --depth=1
+          git show origin/main:results/leaderboard.json > baseline/leaderboard.json 2>/dev/null \
+            || cp results/leaderboard.json baseline/leaderboard.json
+      - name: Smoke eval
+        run: uv run coding-eval run --agents claude-code --smoke --output-dir results
+      - name: Regression gate
+        run: uv run python scripts/ci_regression_gate.py baseline/leaderboard.json results/leaderboard.json
+      - name: Prepare PR comment
+        if: github.event_name == 'pull_request'
+        id: comment
+        run: |
+          composite=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("results/leaderboard.json").read_text())
+          for entry in data.get("entries", []):
+              if entry.get("agent_id") == "claude-code":
+                  print(f"{entry['mean_composite_score']:.3f}")
+                  break
+          PY
+          )
+          baseline=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("baseline/leaderboard.json")
+          if not p.is_file():
+              print("n/a")
+          else:
+              data = json.loads(p.read_text())
+              for entry in data.get("entries", []):
+                  if entry.get("agent_id") == "claude-code":
+                      print(f"{entry['mean_composite_score']:.3f}")
+                      break
+              else:
+                  print("n/a")
+          PY
+          )
+          {
+            echo "composite=$composite"
+            echo "baseline=$baseline"
+          } >> "$GITHUB_OUTPUT"
+      - name: Sticky PR comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: smoke-eval
+          message: |
+            ## Smoke eval (`claude-code`, 5 tasks)
+
+            | Metric | Value |
+            | --- | ---: |
+            | Composite | **${{ steps.comment.outputs.composite }}** |
+            | Main baseline | ${{ steps.comment.outputs.baseline }} |
+            | Regression tolerance | 0.60 |
+
+            Full leaderboard written to `results/leaderboard.json` in this workflow run.

@@ -1,0 +1,61 @@
+name: Leaderboard Nightly
+
+on:
+  schedule:
+    # 03:00 America/Chicago (CST) — GitHub cron is UTC; 03:00 CT ≈ 09:00 UTC
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Task limit (0 = all 50 tasks; 1 = dry-run)"
+        required: false
+        default: "0"
+
+concurrency:
+  group: leaderboard-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  nightly-leaderboard:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-extras
+      - name: Build sandbox image
+        run: docker build -f Dockerfile.sandbox -t coding-eval-sandbox:latest .
+      - name: Snapshot current leaderboard
+        run: cp results/leaderboard.json results/leaderboard.before.json
+      - name: Run full eval
+        run: |
+          LIMIT="${{ github.event.inputs.limit || '0' }}"
+          uv run coding-eval run \
+            --agents claude-code \
+            --agents aider \
+            --limit "$LIMIT" \
+            --output-dir results
+      - name: Slack diff
+        run: uv run python scripts/nightly_slack_diff.py
+      - name: Commit leaderboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/leaderboard.json results/leaderboard.md
+          if git diff --staged --quiet; then
+            echo "No leaderboard changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(leaderboard): nightly eval update [skip ci]"
+          git push

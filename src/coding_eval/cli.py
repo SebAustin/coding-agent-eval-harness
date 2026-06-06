@@ -184,6 +184,7 @@ async def _eval_task(
             anthropic_client,
             issue_title=task.issue_title,
             semantic_cache_path=str(semantic_cache_path),
+            test_files=task.test_files,
         )
     except RepoCloneError as exc:
         error = str(exc)

@@ -36,4 +36,3 @@ class TaskResult(BaseModel):
     error: str | None = None
     run_id: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
-

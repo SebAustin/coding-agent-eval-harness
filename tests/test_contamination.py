@@ -119,7 +119,10 @@ def test_batch_check_length(mock_corpus: np.ndarray) -> None:
 
 
 def test_batch_check_empty() -> None:
-    assert batch_check([], np.zeros((0, EMBEDDING_DIM), dtype=np.float32), _FakeModel(np.zeros(384))) == []  # type: ignore[arg-type]
+    assert (
+        batch_check([], np.zeros((0, EMBEDDING_DIM), dtype=np.float32), _FakeModel(np.zeros(384)))
+        == []
+    )  # type: ignore[arg-type]
 
 
 def test_embed_text_l2_normalizes() -> None:

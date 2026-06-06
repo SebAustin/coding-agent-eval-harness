@@ -51,9 +51,7 @@ def _is_ignorable_path(path: str) -> bool:
         return True
     if filename.endswith(".md") and "/tests/" not in norm and "/test/" not in norm:
         return True
-    if filename.endswith((".png", ".svg", ".jpg", ".jpeg", ".gif", ".ico")):
-        return True
-    return False
+    return bool(filename.endswith((".png", ".svg", ".jpg", ".jpeg", ".gif", ".ico")))
 
 
 def substantive_changed_files(pr: dict[str, Any]) -> list[str]:
@@ -89,10 +87,7 @@ def has_test_coverage(pr: dict[str, Any]) -> bool:
     changed = pr.get("changed_files", [])
     if not isinstance(changed, list):
         return False
-    return any(
-        isinstance(name, str) and _is_test_file(_normalize_path(name))
-        for name in changed
-    )
+    return any(isinstance(name, str) and _is_test_file(_normalize_path(name)) for name in changed)
 
 
 def _label_name_is_bug(name: str) -> bool:
@@ -112,8 +107,7 @@ def issue_has_bug_label(issue: dict[str, Any]) -> bool:
     if not isinstance(labels, list):
         return False
     return any(
-        isinstance(label, dict)
-        and _label_name_is_bug(str(label.get("name", "")))
+        isinstance(label, dict) and _label_name_is_bug(str(label.get("name", "")))
         for label in labels
     )
 
@@ -159,8 +153,8 @@ __all__ = [
     "MIN_ISSUE_BODY_LEN",
     "filter_failure_reasons",
     "has_test_coverage",
-    "issue_has_bug_label",
     "issue_body_sufficient",
+    "issue_has_bug_label",
     "not_merged_after_cutoff",
     "passes_all_filters",
     "single_file_change",

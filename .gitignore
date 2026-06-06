@@ -1,6 +1,8 @@
 .env
 results/*
 !results/README.md
+!results/leaderboard.json
+!results/leaderboard.md
 __pycache__/
 *.pyc
 .coverage*

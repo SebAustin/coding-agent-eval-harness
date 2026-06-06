@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
 import pytest
 
 from coding_eval.dataset.builder import GitHubDatasetBuilder, _split_repo

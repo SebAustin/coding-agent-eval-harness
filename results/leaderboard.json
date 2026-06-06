@@ -1,0 +1,24 @@
+{
+  "version": "0.1.0",
+  "seed": "seed_50",
+  "created_at": "2026-06-06T13:05:37.015823+00:00",
+  "entries": [
+    {
+      "agent_id": "claude-code",
+      "mean_composite_score": 0.6043096153846154,
+      "mean_test_pass_rate": 0.5,
+      "mean_diff_minimality": 0.7845,
+      "mean_complexity_delta": 0.7992307692307692,
+      "mean_style_score": 0.7649999999999999,
+      "mean_semantic_score": 0.385,
+      "mean_cost_usd": 0.1109526,
+      "n_total": 10,
+      "n_contaminated": 0,
+      "n_clean": 10,
+      "contamination_rate": 0.0,
+      "n_errors": 0,
+      "total_cost_usd": 1.109526,
+      "mean_latency_ms": 42669.434174899834
+    }
+  ]
+}

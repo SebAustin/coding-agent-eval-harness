@@ -43,4 +43,3 @@ def dump_task_results(results: Iterable[TaskResult], path: str | Path) -> None:
         for result in results:
             f.write(result.model_dump_json())
             f.write("\n")
-

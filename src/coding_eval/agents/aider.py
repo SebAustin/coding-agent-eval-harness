@@ -20,7 +20,7 @@ class AiderAdapter(AgentAdapter):
 
     async def solve(self, task: Task, repo_path: str) -> AgentSolveResult:
         _ = task.issue_title
-        completed = subprocess.run(  # noqa: S603
+        completed = subprocess.run(
             [
                 "aider",
                 "--no-git",

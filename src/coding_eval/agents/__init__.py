@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from coding_eval.agents.base import AgentAdapter
 from coding_eval.agents.result import AgentSolveResult
+
 from .aider import AiderAdapter
 from .claude_code import ClaudeCodeAdapter
 
-_ADAPTERS: dict[str, type[AgentAdapter]] = {
+AGENT_REGISTRY: dict[str, type[AgentAdapter]] = {
     "claude-code": ClaudeCodeAdapter,
     "aider": AiderAdapter,
 }
+
+_ADAPTERS = AGENT_REGISTRY
 
 
 def get_adapter(agent_id: str, *, api_key: str | None = None) -> AgentAdapter:
@@ -22,5 +25,11 @@ def get_adapter(agent_id: str, *, api_key: str | None = None) -> AgentAdapter:
     return adapter_cls()
 
 
-__all__ = ["AgentAdapter", "AgentSolveResult", "AiderAdapter", "ClaudeCodeAdapter", "get_adapter"]
-
+__all__ = [
+    "AGENT_REGISTRY",
+    "AgentAdapter",
+    "AgentSolveResult",
+    "AiderAdapter",
+    "ClaudeCodeAdapter",
+    "get_adapter",
+]

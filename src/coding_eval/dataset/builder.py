@@ -111,9 +111,7 @@ class GitHubDatasetBuilder:
         changed_files = pr.get("changed_files", [])
         if not isinstance(changed_files, list):
             return None
-        test_files = [
-            f for f in changed_files if isinstance(f, str) and _is_test_path(f)
-        ]
+        test_files = [f for f in changed_files if isinstance(f, str) and _is_test_path(f)]
         if not test_files:
             return None
 
@@ -299,10 +297,7 @@ class GitHubDatasetBuilder:
             return []
 
         owner, name = _split_repo(repo)
-        query = (
-            f"repo:{owner}/{name} is:pr is:merged "
-            f"merged:2018-01-01..{_MERGED_SEARCH_UNTIL}"
-        )
+        query = f"repo:{owner}/{name} is:pr is:merged " f"merged:2018-01-01..{_MERGED_SEARCH_UNTIL}"
         tasks: list[Task] = []
         loads = 0
         max_loads = 120
@@ -358,9 +353,7 @@ class GitHubDatasetBuilder:
                 except httpx.HTTPError:
                     continue
                 if not (
-                    single_file_change(pr)
-                    and has_test_coverage(pr)
-                    and not_merged_after_cutoff(pr)
+                    single_file_change(pr) and has_test_coverage(pr) and not_merged_after_cutoff(pr)
                 ):
                     continue
                 batch_tasks = await self._tasks_from_pr(
@@ -438,9 +431,7 @@ class GitHubDatasetBuilder:
                 except httpx.HTTPError:
                     continue
                 if not (
-                    single_file_change(pr)
-                    and has_test_coverage(pr)
-                    and not_merged_after_cutoff(pr)
+                    single_file_change(pr) and has_test_coverage(pr) and not_merged_after_cutoff(pr)
                 ):
                     continue
                 batch_tasks = await self._tasks_from_pr(
@@ -637,11 +628,7 @@ class GitHubDatasetBuilder:
         )
         files_resp.raise_for_status()
         files_json: list[dict[str, Any]] = files_resp.json()
-        changed_files = [
-            f["filename"]
-            for f in files_json
-            if isinstance(f.get("filename"), str)
-        ]
+        changed_files = [f["filename"] for f in files_json if isinstance(f.get("filename"), str)]
 
         base = pr_data.get("base") or {}
         base_sha = base.get("sha") if isinstance(base, dict) else None

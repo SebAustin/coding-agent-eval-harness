@@ -11,4 +11,3 @@ __all__ = [
     "compute_test_pass_rate",
     "parse_test_results",
 ]
-

@@ -40,12 +40,13 @@ class RubricScores:
 async def score(
     task_issue: str,
     patch: str,
-    sandbox_result: "SandboxResult",
+    sandbox_result: SandboxResult,
     repo_path: str,
     anthropic_client: anthropic.AsyncAnthropic,
     *,
     issue_title: str = "",
     semantic_cache_path: str | None = None,
+    test_files: list[str] | None = None,
 ) -> RubricScores:
     from pathlib import Path
 
@@ -61,7 +62,11 @@ async def score(
     cache = Path(semantic_cache_path) if semantic_cache_path else None
     test_only = patch_only_modifies_tests(patch)
 
-    test_pass_rate = await asyncio.to_thread(test_pass.score, sandbox_result)
+    test_pass_rate = await asyncio.to_thread(
+        test_pass.score,
+        sandbox_result,
+        test_files=test_files,
+    )
     if test_only:
         log.info("rubric.test_only_patch", issue_title=issue_title[:80])
         test_pass_rate = 0.0
@@ -82,6 +87,7 @@ async def score(
         test_pass_rate=test_pass_rate,
         test_output_tail=test_tail,
         test_only_patch=test_only,
+        test_files=test_files,
     )
 
     return RubricScores(

@@ -34,7 +34,7 @@ def _count_ruff_violations(source: str) -> int:
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     try:
-        completed = subprocess.run(  # noqa: S603
+        completed = subprocess.run(
             [
                 sys.executable,
                 "-m",

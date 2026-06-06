@@ -15,4 +15,3 @@ class AgentAdapter(ABC):
 
     @abstractmethod
     def name(self) -> str: ...
-

@@ -18,4 +18,6 @@ set -a && source .env && set +a
 uv run coding-eval run --agents claude-code --limit 5 --smoke
 ```
 
-Commit `leaderboard.md` to share results on GitHub; keep `.env` and per-run JSONL local unless you intend to publish them.
+Commit `leaderboard.md` and `leaderboard.json` to share results on GitHub (tracked on
+`main` and updated by the [nightly workflow](../.github/workflows/leaderboard-nightly.yml));
+keep `.env` and per-run JSONL local unless you intend to publish them.

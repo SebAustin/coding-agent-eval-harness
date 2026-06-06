@@ -45,7 +45,7 @@ def sample_patch(cloned_sample_repo: Path) -> str:
     greeter_path = cloned_sample_repo / "greeter.py"
     original = greeter_path.read_text(encoding="utf-8")
     greeter_path.write_text(
-        "def greet() -> str:\n    return \"new\"\n",
+        'def greet() -> str:\n    return "new"\n',
         encoding="utf-8",
     )
     repo = Repo(str(cloned_sample_repo))
