@@ -11,8 +11,28 @@ import structlog
 log = structlog.get_logger(__name__)
 
 WHEELS_DIR = ".eval_wheels"
-_CACHE_VERSION = "v3"
+# Bumped to v4: caches now also hold manylinux wheels (see _download_linux_wheels).
+_CACHE_VERSION = "v4"
 _PACKAGE_EXTRAS = (".", ".[dev]", ".[tests]", ".[test]", ".[all]")
+
+# Wheels are downloaded on the host but installed in the Linux sandbox. Pure-python
+# packages ship universal (py3-none-any) wheels that work anywhere, but compiled
+# packages (numpy, pydantic-core, ...) download as host-specific wheels the
+# container can't use. So additionally fetch manylinux cp312 wheels for the
+# resolved deps; the host wheels/sdists stay alongside as a fallback.
+_LINUX_WHEEL_ARGS = [
+    "--only-binary=:all:",
+    "--python-version",
+    "3.12",
+    "--implementation",
+    "cp",
+    "--abi",
+    "cp312",
+    "--platform",
+    "manylinux2014_x86_64",
+    "--platform",
+    "manylinux_2_28_x86_64",
+]
 
 
 def wheel_cache_root() -> Path:
@@ -55,7 +75,13 @@ def _install_specs(repo_path: Path) -> list[list[str]]:
     return specs
 
 
-def _download_wheels(repo_path: Path, dest: Path, spec: list[str]) -> bool:
+def _download_wheels(
+    repo_path: Path,
+    dest: Path,
+    spec: list[str],
+    *,
+    target_linux: bool = False,
+) -> bool:
     cmd = [
         "uv",
         "run",
@@ -67,6 +93,7 @@ def _download_wheels(repo_path: Path, dest: Path, spec: list[str]) -> bool:
         "download",
         "--dest",
         str(dest),
+        *(_LINUX_WHEEL_ARGS if target_linux else []),
         *spec,
     ]
     result = subprocess.run(
@@ -84,6 +111,47 @@ def _download_wheels(repo_path: Path, dest: Path, spec: list[str]) -> bool:
         )
         return False
     return True
+
+
+def _name_version(filename: str) -> tuple[str, str] | None:
+    """Parse (name, version) from a wheel or sdist filename, else None."""
+    if filename.endswith(".whl"):
+        parts = filename[: -len(".whl")].split("-")
+        if len(parts) >= 2:  # noqa: PLR2004 - name-version-...
+            return parts[0], parts[1]
+    for suffix in (".tar.gz", ".zip"):
+        if filename.endswith(suffix):
+            stem = filename[: -len(suffix)]
+            if "-" in stem:
+                name, version = stem.rsplit("-", 1)
+                return name, version
+    return None
+
+
+def _pinned_specs_from_dir(dest: Path) -> list[str]:
+    """``name==version`` for every distribution already downloaded into ``dest``."""
+    specs: dict[str, str] = {}
+    for path in dest.iterdir():
+        parsed = _name_version(path.name)
+        if parsed is not None:
+            name, version = parsed
+            specs.setdefault(name.lower(), f"{name}=={version}")
+    return sorted(specs.values())
+
+
+def _download_linux_wheels(repo_path: Path, dest: Path) -> None:
+    """Fetch manylinux cp312 wheels for the resolved deps, alongside host wheels.
+
+    Best-effort: a single batch call, falling back to per-package so one
+    distribution without a manylinux wheel doesn't drop the rest.
+    """
+    specs = _pinned_specs_from_dir(dest)
+    if not specs:
+        return
+    if _download_wheels(repo_path, dest, specs, target_linux=True):
+        return
+    for spec in specs:
+        _download_wheels(repo_path, dest, [spec], target_linux=True)
 
 
 def _download_poetry_packages(repo_path: Path, dest: Path) -> None:
@@ -134,6 +202,7 @@ def prepare_offline_wheels(
         for spec in _install_specs(repo_path):
             _download_wheels(repo_path, cache_dir, spec)
         _download_poetry_packages(repo_path, cache_dir)
+        _download_linux_wheels(repo_path, cache_dir)
         if any(cache_dir.iterdir()):
             shutil.copytree(cache_dir, wheels_dir)
             log.info(
