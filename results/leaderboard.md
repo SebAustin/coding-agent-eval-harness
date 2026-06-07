@@ -1,7 +1,8 @@
 # Leaderboard
 
-Seed: `seed_50` · Version: `0.1.0` · Generated: `2026-06-06T14:29:20.101571+00:00`
+Seed: `seed_50` · Version: `0.1.0` · Generated: `2026-06-07T11:32:03.946122+00:00`
 
 | Agent | Composite | Test pass | Diff min | Complexity | Style | Semantic | Cost/task | n_clean | Contamination% |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| claude-code | 0.60 | 0.40 | 0.82 | 0.85 | 0.80 | 0.45 | $0.092 | 20 | 0.0% |
+| claude-code | 0.55 | 0.35 | 0.77 | 0.80 | 0.75 | 0.40 | $0.090 | 20 | 0.0% |
+| aider | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | $0.000 | 20 | 0.0% |
