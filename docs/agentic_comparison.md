@@ -48,11 +48,38 @@ Because `temperature=0` is not a seed, per-task composite varies up to ~0.2 betw
 runs (see [methodology §Limitations](methodology.md)). Average several runs, or compare
 on a fixed task set, before reading rankings into a single run.
 
-## Evidence so far
+## Results (seed_50, `--seed 42`)
 
-| Scope | Result |
-|---|---|
-| `typer-0822` (multi-file: `_completion_shared.py` + `_completion_classes.py`) | single-shot: empty patch (fabricated tool tags) → composite 0.0; agentic: applicable patch, **10/10 completion tests pass** |
+A full 20-task run was executed for both adapters. The funded API credits were
+exhausted partway through the (~15x pricier) agentic pass: 8 of the 20 agentic
+tasks returned `400 invalid_request_error: credit balance too low` and scored 0.
+An errored task scores 0 on *every* axis, so those spurious zeros make the raw
+20-task aggregate meaningless for the agentic adapter (it reads -0.065 composite —
+an artifact). Compare instead on the **12 tasks where both adapters completed**:
 
-The full-dataset comparison (the table `compare_agents.py` emits) is pending an API
-credit / CI-capacity window; the command above reproduces it.
+| Axis | claude-code | claude-code-agentic | delta |
+|---|---:|---:|---:|
+| Composite | 0.689 | 0.817 | **+0.128** |
+| Test pass | 0.500 | 0.667 | +0.167 |
+| Diff min | 0.897 | 0.963 | +0.066 |
+| Complexity | 0.914 | 0.999 | +0.085 |
+| Style | 0.887 | 0.954 | +0.067 |
+| Semantic | 0.546 | 0.729 | +0.183 |
+| Cost/task ($) | 0.066 | 1.015 | +0.949 |
+
+**On tasks it completed, the agentic adapter is a net win (+0.128 composite),
+driven by correctness (test pass +0.167, semantic +0.183), at ~15x cost.** The
+wins concentrate on exploration / multi-file tasks; easy single-file tasks tie:
+
+| Task | single-shot | agentic | note |
+|---|---:|---:|---|
+| `typer-0822` | 0.000 | 0.979 | single-shot emitted fake tool tags -> empty patch; agentic patches both files |
+| `rich-1876` | 0.501 | 0.970 | multi-file fix |
+| `rich-1717` | 0.437 | 0.517 | |
+| 8 easy tasks | ~0.99 | ~0.99 | tie |
+
+Caveats: 12-task subset (credits cut the run short — finish the remaining 8 with
+more balance for a full-20 number); `temperature=0` is not a seed, so per-task
+composite varies ~0.2 between runs — average several runs before treating +0.128 as
+definitive; the ~15x cost premium is real and is the price of exploration. Reproduce
+with `make eval-compare`.

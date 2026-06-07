@@ -57,10 +57,10 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 
 > Measured numbers from `results/leaderboard.json` (`--seed 42`, full current
 > dataset of 20 tasks). Multi-agent (Aider/Codex) comparison and dataset
-> expansion to 50 tasks are pending (issues #1, #2). The single-shot vs
-> `claude-code-agentic` head-to-head is reproducible via `make eval-compare`
-> ([agentic comparison](docs/agentic_comparison.md); full-dataset numbers pending
-> a credit window). Per-task composite varies up
+> expansion to 50 tasks are pending (issues #1, #2). On the 12 seed_50 tasks where
+> both adapters completed, `claude-code-agentic` beats single-shot by **+0.128
+> composite** (correctness-driven, ~15x cost) — reproduce with `make eval-compare`
+> ([agentic comparison](docs/agentic_comparison.md)). Per-task composite varies up
 > to ~0.2 between runs from agent sampling (`temperature=0` is not a seed) — see
 > [methodology §Limitations](docs/methodology.md). Average over runs before
 > reading rankings into single-run differences.
