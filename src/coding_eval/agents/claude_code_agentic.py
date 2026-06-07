@@ -7,7 +7,11 @@ import anthropic
 import structlog
 from anthropic.types import MessageParam
 
-from coding_eval.agents._common import message_text, usage_cost_usd
+from coding_eval.agents._common import (
+    create_message_with_retry,
+    message_text,
+    usage_cost_usd,
+)
 from coding_eval.agents.base import AgentAdapter
 from coding_eval.agents.context import format_apply_failure_context, gather_repo_context
 from coding_eval.agents.prompts import AGENTIC_NO_OUTPUT_REPROMPT, AGENTIC_SYSTEM_PROMPT
@@ -27,6 +31,9 @@ MAX_TURNS = 24
 # of exploring forever; the reserve also leaves retries if the first apply fails.
 FORCED_DIFF_TURNS = 3
 MAX_TOKENS = 8192
+# Hard USD backstop: tool exploration accumulates context, so cost grows per turn
+# even though MAX_TURNS bounds the call count. Stop the loop if spend crosses this.
+MAX_COST_USD = 4.0
 FORCE_DIFF_NUDGE = (
     "Tool budget nearly exhausted. After these results, stop exploring and reply "
     "with ONLY the final unified diff starting with '---'."
@@ -76,6 +83,9 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         patch = ""
 
         for turn in range(MAX_TURNS):
+            if cost >= MAX_COST_USD:
+                log.warning("agentic.cost_ceiling", task_id=task.task_id, cost_usd=round(cost, 4))
+                break
             tools_enabled = turn < MAX_TURNS - FORCED_DIFF_TURNS
             message, cost = await self._call(messages, cost, use_tools=tools_enabled)
             text = message_text(message)
@@ -136,21 +146,25 @@ class ClaudeCodeAgenticAdapter(AgentAdapter):
         use_tools: bool,
     ) -> tuple[anthropic.types.Message, float]:
         if use_tools:
-            message = await self._client.messages.create(
-                model=MODEL_ID,
-                max_tokens=MAX_TOKENS,
-                temperature=0,
-                system=AGENTIC_SYSTEM_PROMPT,
-                tools=cast("Any", TOOL_SPECS),
-                messages=messages,
+            message = await create_message_with_retry(
+                lambda: self._client.messages.create(
+                    model=MODEL_ID,
+                    max_tokens=MAX_TOKENS,
+                    temperature=0,
+                    system=AGENTIC_SYSTEM_PROMPT,
+                    tools=cast("Any", TOOL_SPECS),
+                    messages=messages,
+                ),
             )
         else:
-            message = await self._client.messages.create(
-                model=MODEL_ID,
-                max_tokens=MAX_TOKENS,
-                temperature=0,
-                system=AGENTIC_SYSTEM_PROMPT,
-                messages=messages,
+            message = await create_message_with_retry(
+                lambda: self._client.messages.create(
+                    model=MODEL_ID,
+                    max_tokens=MAX_TOKENS,
+                    temperature=0,
+                    system=AGENTIC_SYSTEM_PROMPT,
+                    messages=messages,
+                ),
             )
         return message, cost + usage_cost_usd(message.usage)
 

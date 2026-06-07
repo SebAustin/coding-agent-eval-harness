@@ -46,6 +46,11 @@ structlog.configure(
 DEFAULT_TASKS_PATH = Path("data/tasks/seed_50.jsonl")
 DEFAULT_EMBEDDINGS_PATH = Path("data/contamination/swebench_train_embeddings.npz")
 
+# Wall-clock ceiling on a single agent.solve(). Bounds a hung API call or a
+# runaway tool loop (the agentic adapter makes many calls); the sandbox has its
+# own separate timeout for test execution. Override with CODING_EVAL_AGENT_TIMEOUT_S.
+AGENT_SOLVE_TIMEOUT_S = int(os.environ.get("CODING_EVAL_AGENT_TIMEOUT_S", "600"))
+
 app = typer.Typer(name="coding-eval", add_completion=False)
 
 
@@ -141,7 +146,10 @@ async def _eval_task(
             repo_id=task.repo,
             commit=task.base_commit,
         )
-        solve_result = await adapter.solve(task, str(repo_dir))
+        solve_result = await asyncio.wait_for(
+            adapter.solve(task, str(repo_dir)),
+            timeout=AGENT_SOLVE_TIMEOUT_S,
+        )
         patch = solve_result.patch
         cost_usd = solve_result.cost_usd
         if not patch.strip() and solve_result.raw_response.strip():
@@ -189,6 +197,9 @@ async def _eval_task(
     except RepoCloneError as exc:
         error = str(exc)
         log.warning("eval.clone_failed", task_id=task.task_id, error=error)
+    except TimeoutError:
+        error = f"agent solve exceeded {AGENT_SOLVE_TIMEOUT_S}s"
+        log.warning("eval.solve_timeout", task_id=task.task_id, timeout_s=AGENT_SOLVE_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001
         error = str(exc)
         log.warning("eval.task_failed", task_id=task.task_id, error=error)

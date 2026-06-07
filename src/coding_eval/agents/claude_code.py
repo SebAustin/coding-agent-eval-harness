@@ -6,7 +6,11 @@ import anthropic
 import structlog
 from anthropic.types import MessageParam
 
-from coding_eval.agents._common import message_text, usage_cost_usd
+from coding_eval.agents._common import (
+    create_message_with_retry,
+    message_text,
+    usage_cost_usd,
+)
 from coding_eval.agents.base import AgentAdapter
 from coding_eval.agents.context import (
     format_apply_failure_context,
@@ -130,12 +134,14 @@ class ClaudeCodeAdapter(AgentAdapter):
         messages: list[MessageParam],
         cost: float,
     ) -> tuple[str, float]:
-        message = await self._client.messages.create(
-            model=MODEL_ID,
-            max_tokens=4096,
-            temperature=0,
-            system=SYSTEM_PROMPT,
-            messages=messages,
+        message = await create_message_with_retry(
+            lambda: self._client.messages.create(
+                model=MODEL_ID,
+                max_tokens=4096,
+                temperature=0,
+                system=SYSTEM_PROMPT,
+                messages=messages,
+            ),
         )
         raw = message_text(message)
         messages.append({"role": "assistant", "content": raw})

@@ -43,8 +43,15 @@ class MyAgentAdapter(AgentAdapter):
 
 Reference implementations:
 
-- `src/coding_eval/agents/claude_code.py` — Anthropic Messages API, apply-check retry
+- `src/coding_eval/agents/claude_code.py` — Anthropic Messages API, apply-check retry (single-shot)
+- `src/coding_eval/agents/claude_code_agentic.py` — tool-using loop: read-only
+  `read_file`/`grep`/`list_dir` over the clone (`repo_tools.py`), forced-diff turns,
+  cost ceiling. Use this pattern when a fix needs multi-file exploration.
 - `src/coding_eval/agents/aider.py` — subprocess wrapper
+
+If you expose tools, keep them read-only and sandboxed to the repo root (see
+`RepoTools._resolve`), and bound the loop with a turn cap, a cost ceiling, and the
+eval-loop wall-clock timeout (`CODING_EVAL_AGENT_TIMEOUT_S`).
 
 **Do not** run agent code or tests inside the adapter on the host filesystem beyond
 reading repo context; test execution happens in `DockerSandbox` after patch extraction.
@@ -58,6 +65,7 @@ from .my_agent import MyAgentAdapter
 
 AGENT_REGISTRY: dict[str, type[AgentAdapter]] = {
     "claude-code": ClaudeCodeAdapter,
+    "claude-code-agentic": ClaudeCodeAgenticAdapter,
     "aider": AiderAdapter,
     "my-agent": MyAgentAdapter,
 }
@@ -66,14 +74,9 @@ AGENT_REGISTRY: dict[str, type[AgentAdapter]] = {
 `cli.py` resolves agents via `get_adapter()` imported from this module. The registry key
 is the CLI `--agents` value.
 
-If your adapter needs constructor kwargs (e.g. API keys), extend `get_adapter()`:
-
-```python
-def get_adapter(agent_id: str, *, api_key: str | None = None) -> AgentAdapter:
-    ...
-    if agent_id == "my-agent":
-        return MyAgentAdapter(api_key=api_key)
-```
+If your adapter takes an `api_key` constructor kwarg, add its id to `_API_KEY_AGENTS`
+in `agents/__init__.py`; `get_adapter()` passes the key to those and constructs all
+others argument-free.
 
 ## 3. Add tests
 

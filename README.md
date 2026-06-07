@@ -57,7 +57,10 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 
 > Measured numbers from `results/leaderboard.json` (`--seed 42`, full current
 > dataset of 20 tasks). Multi-agent (Aider/Codex) comparison and dataset
-> expansion to 50 tasks are pending (issues #1, #2). Per-task composite varies up
+> expansion to 50 tasks are pending (issues #1, #2). The single-shot vs
+> `claude-code-agentic` head-to-head is reproducible via `make eval-compare`
+> ([agentic comparison](docs/agentic_comparison.md); full-dataset numbers pending
+> a credit window). Per-task composite varies up
 > to ~0.2 between runs from agent sampling (`temperature=0` is not a seed) — see
 > [methodology §Limitations](docs/methodology.md). Average over runs before
 > reading rankings into single-run differences.
@@ -68,9 +71,33 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 
 *Contamination: 0/20 tasks flagged vs SWE-bench train. Of the 3 tasks scoring 0,
 all are single-shot agent limits (the model needs to explore multiple files and
-hallucinates context) rather than harness failures — see issue for an agentic
-adapter. Full 50-task contamination analysis:
-[`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+hallucinates context) rather than harness failures — now addressed by the
+tool-using [`claude-code-agentic`](#agents) adapter. Full 50-task contamination
+analysis: [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+
+## Agents
+
+| ID | Strategy | Cost/task | When to use |
+|---|---|---|---|
+| `claude-code` | Single-shot: fixed repo-context prompt → one diff (+ apply-check retries) | ~$0.09 | Default; fast and cheap for fixes whose context fits up front. |
+| `claude-code-agentic` | Tool-using: read-only `read_file`/`grep`/`list_dir` over the clone, loops until it emits an applicable diff | ~$1–2 | Multi-file fixes that need codebase exploration (e.g. a helper + its callers). |
+| `aider` | Subprocess wrapper around the `aider` CLI | — | External-tool comparison. |
+
+```bash
+# Single-shot (default)
+uv run coding-eval run --agents claude-code --limit 5
+
+# Tool-using agentic variant — explores the repo before patching
+uv run coding-eval run --agents claude-code-agentic --tasks-file data/tasks/typer-0822.jsonl
+```
+
+The agentic adapter is bounded by `MAX_TURNS` (call count), `MAX_COST_USD` (spend),
+and a per-task wall-clock timeout (`CODING_EVAL_AGENT_TIMEOUT_S`, default 600s); transient
+API errors are retried with exponential backoff. Docker sandbox execution is unchanged —
+only host-side patch generation gains tools.
+
+Reproduce the single-shot vs agentic head-to-head with `make eval-compare` (renders a
+per-axis delta) — see [agentic comparison](docs/agentic_comparison.md).
 
 ## Documentation
 
@@ -78,6 +105,7 @@ adapter. Full 50-task contamination analysis:
 - [Rubric design](docs/rubric_design.md) — per-axis formulas and weights
 - [Contamination analysis](docs/contamination_analysis.md) — threshold and overlap stats
 - [Adding agents](docs/adding_agents.md) — register a new `AgentAdapter`
+- [Agentic comparison](docs/agentic_comparison.md) — reproducible single-shot vs agentic head-to-head
 
 ## Sources
 
