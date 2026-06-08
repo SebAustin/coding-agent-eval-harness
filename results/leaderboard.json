@@ -1,24 +1,24 @@
 {
   "version": "0.1.0",
   "seed": "seed_50",
-  "created_at": "2026-06-07T11:32:03.946122+00:00",
+  "created_at": "2026-06-08T13:32:40.234509+00:00",
   "entries": [
     {
       "agent_id": "claude-code",
-      "mean_composite_score": 0.5516682330034188,
-      "mean_test_pass_rate": 0.35,
-      "mean_diff_minimality": 0.7747499999999999,
-      "mean_complexity_delta": 0.7988715533561259,
-      "mean_style_score": 0.7474999999999999,
-      "mean_semantic_score": 0.40499999999999997,
-      "mean_cost_usd": 0.08970645000000001,
+      "mean_composite_score": 0.5809906156845759,
+      "mean_test_pass_rate": 0.4,
+      "mean_diff_minimality": 0.7707499999999999,
+      "mean_complexity_delta": 0.7983541045638389,
+      "mean_style_score": 0.7775000000000001,
+      "mean_semantic_score": 0.445,
+      "mean_cost_usd": 0.086334,
       "n_total": 20,
       "n_contaminated": 0,
       "n_clean": 20,
       "contamination_rate": 0.0,
       "n_errors": 0,
-      "total_cost_usd": 1.794129,
-      "mean_latency_ms": 60729.52059984997
+      "total_cost_usd": 1.72668,
+      "mean_latency_ms": 66080.21678239998
     },
     {
       "agent_id": "aider",
@@ -35,7 +35,7 @@
       "contamination_rate": 0.0,
       "n_errors": 20,
       "total_cost_usd": 0.0,
-      "mean_latency_ms": 1130.8836803499958
+      "mean_latency_ms": 1372.6138285000275
     }
   ]
 }
