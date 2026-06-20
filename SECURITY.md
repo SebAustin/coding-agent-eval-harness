@@ -166,7 +166,7 @@ validated on the host before the sandbox. Findings from direct experiments on gi
 | ID | Threat | Category | Severity | Impact | Remediation | Status |
 |---|---|---|---|---|---|---|
 | **M-1** | `scripts/precompute_contamination.py:10` imports `from datasets import ...` after `datasets` was removed from deps | Tampering / availability (functional break) | **Medium** | The contamination-precompute utility now fails with `ImportError`; anyone re-running it to refresh `swebench_train_embeddings.npz` is blocked. Not on the eval hot path; offline suite unaffected. | Either (a) re-add `datasets` as a `precompute`/`dev` extra that this script declares, or (b) move the `from datasets import ...` to a lazy import inside the command function and document the extra in the script header. Do NOT silently leave the broken top-level import. | Recommended (safe-fix candidate this PR) |
-| **M-2** | Diff target paths reach `git apply` with no harness-level validation; `extract.py` passes `..`/absolute paths through verbatim | Elevation of privilege (path traversal) — defense-in-depth | **Medium** | Currently NOT exploitable (git rejects traversal/symlink escapes at check + apply, verified). Risk is single-layer reliance: a future `git apply` invocation flag or git regression could remove the only containment. | Add a cheap host-side guard before apply/compile: reject any extracted patch whose target paths (post-`a/`,`b/` strip) contain `..`, are absolute, or normalize outside the repo root. Keep `git apply` invoked WITHOUT `--unsafe-paths`/`--directory`. ~10 lines in `patching/extract.py` or a new check in `_validate_patch`. | Recommended |
+| **M-2** | Diff target paths reach `git apply` with no harness-level validation; `extract.py` passes `..`/absolute paths through verbatim | Elevation of privilege (path traversal) — defense-in-depth | **Medium** | Currently NOT exploitable (git rejects traversal/symlink escapes at check + apply, verified). Risk is single-layer reliance: a future `git apply` invocation flag or git regression could remove the only containment. | Add a cheap host-side guard before apply/compile: reject any extracted patch whose target paths (post-`a/`,`b/` strip) contain `..`, are absolute, or normalize outside the repo root. Keep `git apply` invoked WITHOUT `--unsafe-paths`/`--directory`. ~10 lines in `patching/extract.py` or a new check in `_validate_patch`. | **Resolved** — `patch_paths_within_repo()` in `validate.py`, wired into `_solver._validate_patch` as the first gate (before git); covered by `tests/test_patch_path_guard.py`. |
 | **L-1** | OpenAI SDK call sets no explicit per-request timeout; backoff has no total-time ceiling | Denial of service (resource exhaustion) | **Low** | A hung/slow upstream could stall a task longer than intended; retries (4) compound. Bounded overall by `MAX_RETRIES`/`MAX_APPLY_ATTEMPTS`, so not unbounded. | Pass an explicit `timeout=` to `AsyncOpenAI(...)` or the `create(...)` call (e.g. 60s), mirroring a sane default; optionally cap cumulative backoff. | Recommended |
 | **L-2** | `shutil.copytree(..., symlinks=True)` in `patch_py_files_compile` copies symlinks verbatim into the temp dir | Tampering (theoretical symlink write-through) | **Low** | A repo-internal symlink pointing outside the tree, combined with a patch writing through it, could in principle touch an external path during the temp-copy apply. Mitigated by git's "beyond a symbolic link" rejection (verified) and the per-run temp dir. | Acceptable as-is given git's guard; optionally `symlinks=False` (dereference) or refuse patches that target symlinked paths. | Accepted (low residual) |
 | **L-3** | `git apply` containment is the sole control; behavior is git-version-dependent | Elevation of privilege (assumption) | **Low** | Verified safe on git 2.50.1; older/forked git could differ. | Document the minimum git version assumption; pair with M-2's harness-level guard. | Recommended (pairs with M-2) |
@@ -191,10 +191,11 @@ git-enforced path containment, bounded retries, clean lockfile, green offline su
 
 ## 6. Residual risk / accepted
 
-- **Single-layer path containment (M-2 / L-3, accepted pending fix).** The host-side patch
-  boundary depends on `git apply`'s own path/symlink checks. Verified robust on git 2.50.1;
-  exploitability today is effectively nil. Accepted as residual until a harness-level guard is
-  added; tracked as M-2.
+- **Path containment now double-layered (M-2 resolved).** The host-side patch boundary no
+  longer relies on `git apply` alone: `patch_paths_within_repo()` rejects any diff target that
+  is absolute (POSIX or Windows-drive) or resolves outside the repo root, before git or
+  py-compile run. `git apply`'s own check+apply rejection remains the second layer. (L-3:
+  documenting a minimum git version is still recommended, but git is no longer the sole control.)
 - **Symlinked temp-copy (L-2, accepted).** `copytree(symlinks=True)` is low-risk given git's
   "beyond a symbolic link" rejection and the disposable per-run temp dir.
 - **No request timeout on the OpenAI call (L-1, accepted short-term).** Bounded by retry counts;
@@ -211,8 +212,10 @@ git-enforced path containment, bounded retries, clean lockfile, green offline su
 
 - [ ] **M-1:** Fix the dangling `from datasets import ...` in `scripts/precompute_contamination.py`
       (lazy import + declared `precompute` extra, or re-add the dep to a dev/extra group).
-- [ ] **M-2:** Add a host-side diff-path guard (reject `..`, absolute, or out-of-root targets)
-      before `git apply`/`py_compile`; keep `git apply` free of `--unsafe-paths`/`--directory`.
+- [x] **M-2:** Host-side diff-path guard added — `patch_paths_within_repo()` in `validate.py`,
+      called first in `_solver._validate_patch` (rejects absolute / out-of-root targets before
+      `git apply`/`py_compile`); `git apply` kept free of `--unsafe-paths`/`--directory`.
+      Covered by `tests/test_patch_path_guard.py`.
 - [ ] **L-1:** Set an explicit `timeout=` on the OpenAI client/call.
 - [ ] **L-2:** Consider `copytree(..., symlinks=False)` or refuse symlink-targeted patches.
 - [ ] **L-3 / I-3:** Document the minimum git version; add `pip-audit` (against `uv.lock`) and

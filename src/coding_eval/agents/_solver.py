@@ -31,7 +31,7 @@ from coding_eval.agents.result import AgentSolveResult
 from coding_eval.dataset.schema import Task
 from coding_eval.patching.extract import extract_unified_patch, looks_like_diff_attempt
 from coding_eval.patching.git_apply import check_unified_diff
-from coding_eval.patching.validate import patch_py_files_compile
+from coding_eval.patching.validate import patch_paths_within_repo, patch_py_files_compile
 
 log = structlog.get_logger(__name__)
 
@@ -156,6 +156,11 @@ async def solve_single_shot(
 
 
 async def _validate_patch(repo_path: str, patch: str) -> tuple[bool, str]:
+    # Defense-in-depth: reject paths that escape the repo root before touching git.
+    paths_ok, paths_error = patch_paths_within_repo(repo_path, patch)
+    if not paths_ok:
+        log.info("agent.patch_path_escapes_repo", error=paths_error[:500])
+        return False, paths_error
     ok, error = await asyncio.to_thread(check_unified_diff, repo_path, patch)
     if not ok:
         return False, error
