@@ -20,6 +20,35 @@ correct diffs, and a leaderboard you can commit next to your code.
 
 ## Architecture
 
+### At a glance
+
+```mermaid
+flowchart LR
+    classDef input   fill:#e8f4fd,stroke:#4a90d9,color:#1a3a5c
+    classDef agent   fill:#f0f4e8,stroke:#6a9a3a,color:#2a4a1a
+    classDef sandbox fill:#fce8e8,stroke:#c0392b,color:#5a0a0a
+    classDef scoring fill:#f3e8fc,stroke:#8e44ad,color:#3a0a5a
+    classDef output  fill:#e8fcf0,stroke:#27ae60,color:#0a3a1a
+
+    tasks["GitHub PR-Issues<br/>(contamination-filtered)"]:::input
+    agents["Coding Agents<br/>Claude · OpenAI · Aider"]:::agent
+    patch("patch"):::agent
+    sandbox["Docker Sandbox<br/>git apply + pytest"]:::sandbox
+    rubric["5-axis Rubric"]:::scoring
+    leaderboard(["Leaderboard"]):::output
+
+    tasks   --> agents
+    agents  --> patch
+    patch   -->|"isolated run"| sandbox
+    sandbox -->|"score"| rubric
+    rubric  --> leaderboard
+```
+
+_Contamination-filtered GitHub PR-issue tasks → coding agents emit a patch → it runs in an
+isolated Docker sandbox → a 5-axis rubric scores it → results land on the leaderboard._
+
+### Detailed pipeline
+
 ```mermaid
 flowchart TD
     classDef input fill:#e8f4fd,stroke:#4a90d9,color:#1a3a5c
