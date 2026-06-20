@@ -7,7 +7,12 @@ import json
 import sys
 from pathlib import Path
 
-REGRESSION_TOLERANCE = 0.60
+# Max allowed drop in mean smoke composite vs the main baseline before CI fails.
+# 0.60 was effectively "never fires" (CODEBASE.md §9.8). At a current max composite
+# of ~0.60 and temperature=0 sampling, 0.10 catches a genuine regression while
+# tolerating benign run-to-run noise in the mean. Revisit once the leaderboard
+# stabilizes on the 50-task set (D1).
+REGRESSION_TOLERANCE = 0.10
 DEFAULT_AGENT = "claude-code"
 
 
