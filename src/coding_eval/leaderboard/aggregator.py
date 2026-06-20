@@ -31,7 +31,7 @@ class LeaderboardEntry(BaseModel):
 class Leaderboard(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     seed: str = "seed_50"
     created_at: str = Field(default_factory=lambda: datetime.now(tz=UTC).isoformat())
     entries: tuple[LeaderboardEntry, ...] = ()
