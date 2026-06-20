@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 import structlog
 import typer
-from datasets import concatenate_datasets, load_dataset, load_dataset_builder
 from sentence_transformers import SentenceTransformer
 
 from coding_eval.dataset.contamination import EMBEDDING_DIM, MODEL_NAME
@@ -34,6 +33,24 @@ def _embedding_text(instance_id: str, problem_statement: str) -> str:
 
 
 def _load_train_split() -> list[dict[str, Any]]:
+    # `datasets` is an optional, precompute-only dependency (heavy, pulls pyarrow).
+    # It is NOT required to run the harness — only to regenerate the contamination
+    # embeddings. Lazy-import it so a lean `uv sync` install stays small and the
+    # missing-extra failure is a clear message instead of a top-level ImportError.
+    try:
+        from datasets import (
+            concatenate_datasets,
+            load_dataset,
+            load_dataset_builder,
+        )
+    except ImportError as exc:  # pragma: no cover - environment-dependent
+        msg = (
+            "The 'datasets' package is required to precompute contamination "
+            "embeddings. Install the optional extra: `uv sync --extra contamination` "
+            "(or `pip install 'coding-agent-eval-harness[contamination]'`)."
+        )
+        raise typer.BadParameter(msg) from exc
+
     builder = load_dataset_builder(DATASET_NAME)
     available = list(builder.info.splits.keys())
     if DATASET_SPLIT in available:

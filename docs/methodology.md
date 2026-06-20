@@ -95,15 +95,29 @@ cheating or partial fixes; the judge receives pytest output tail and issue conte
 Changing weights requires updating `WEIGHTS` in `scorer.py` **and** this document plus
 [rubric_design.md](rubric_design.md).
 
+## Provider-agnostic single-shot pipeline
+
+As of v0.2, the single-shot solve loop (gather context → completion → extract patch →
+format-fixup reprompt → apply-check + py-compile → bounded retry) lives in
+`agents/_solver.py` and is shared by all single-shot adapters (`claude-code`, `openai`).
+Each adapter supplies only a `complete(messages) -> (text, incremental_cost_usd)` closure;
+the solver is otherwise identical for both providers.
+
+This design means **per-provider score differences are attributable to the model, not the
+harness**: both providers see the same prompt, the same retry budget, and the same
+validation gates. Cost is accumulated in the solver from the incremental cost each closure
+returns; neither adapter can skew total cost by double-counting.
+
 ## Judge model
 
 | Role | Model | Temperature |
 | --- | --- | ---: |
-| Agent adapter (Claude Code) | `claude-sonnet-4-5-20250929` | 0 |
+| Agent adapter (`claude-code`, `claude-code-agentic`) | `claude-sonnet-4-5-20250929` | 0 |
+| Agent adapter (`openai`) | `gpt-4o-2024-11-20` | 0 |
 | Semantic judge | `claude-sonnet-4-5-20250929` | 0 |
 
 Pinned in `src/coding_eval/models.py`. Judge prompts and parse hardening live in
-`src/coding_eval/rubric/semantic.py` (cache version `v5`).
+`src/coding_eval/rubric/semantic.py` (cache version `v6`).
 
 ### Limitations
 

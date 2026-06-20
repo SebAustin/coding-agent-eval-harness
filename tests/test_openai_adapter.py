@@ -9,18 +9,16 @@ network). Includes the three mandatory tests from PLAN.md §7 / S15:
 
 Also covers S6/S7 registry and key-plumbing assertions.
 
-Note: ``openai.AsyncOpenAI.__init__`` is patched at the class level because
-``openai==1.53.0`` + ``httpx==0.28.1`` raises a ``TypeError: proxies`` on
-instantiation without a running event loop / httpx compatibility shim. Mocking
-the constructor avoids the SDK internals entirely (consistent with how
-``test_claude_code.py`` replaces ``adapter._client`` after construction — here
-we intercept one step earlier since the httpx issue fires in ``__init__``).
+Note: ``openai==1.57.4`` + ``httpx==0.28.1`` are fully compatible — the
+``proxies`` kwarg was removed from httpx 0.28 and openai stopped passing it in
+~1.55.3. Construction is now real; tests replace ``adapter._client`` after
+construction to inject mocks, consistent with ``test_claude_code.py``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from git import Repo
@@ -83,9 +81,8 @@ def _empty_completion() -> MagicMock:
 def _make_adapter(
     side_effect: list[MagicMock] | None = None, return_value: MagicMock | None = None
 ) -> OpenAIAdapter:
-    """Create an OpenAIAdapter with a fully mocked client, bypassing httpx init."""
-    with patch("openai.AsyncOpenAI"):
-        adapter = OpenAIAdapter(api_key="test-key")
+    """Create an OpenAIAdapter with a real client construction, then replace _client."""
+    adapter = OpenAIAdapter(api_key="test-key")
     mock_client = AsyncMock()
     if side_effect is not None:
         mock_client.chat.completions.create = AsyncMock(side_effect=side_effect)
@@ -107,15 +104,18 @@ def test_openai_registered_in_agent_registry() -> None:
 
 
 def test_get_adapter_openai_with_explicit_key() -> None:
-    with patch("openai.AsyncOpenAI"):
-        adapter = get_adapter("openai", api_key="test-x")
+    adapter = get_adapter("openai", api_key="test-x")
     assert isinstance(adapter, OpenAIAdapter)
 
 
-def test_get_adapter_openai_without_key_constructs() -> None:
-    # Key resolved from env (may be absent); constructor must not raise.
-    with patch("openai.AsyncOpenAI"):
-        adapter = get_adapter("openai")
+def test_get_adapter_openai_without_key_constructs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No explicit key AND no OPENAI_API_KEY in env: the adapter must still
+    # construct (the OpenAI client is built lazily, so the missing-key error is
+    # deferred to solve time — matching the Anthropic adapter's behavior).
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    adapter = get_adapter("openai")
     assert isinstance(adapter, OpenAIAdapter)
 
 
@@ -293,3 +293,164 @@ async def test_openai_cost_sums_across_retries(tmp_path: Path) -> None:
     # Prove it is the SUM, not just one call's cost.
     assert result.cost_usd > inc1
     assert result.cost_usd > inc2
+
+
+# ---------------------------------------------------------------------------
+# name() method (openai_adapter.py line 47)
+# ---------------------------------------------------------------------------
+
+
+def test_openai_adapter_name() -> None:
+    """OpenAIAdapter.name() returns the agent_id string."""
+    adapter = OpenAIAdapter(api_key="test-key")
+    assert adapter.name() == "openai"
+
+
+# ---------------------------------------------------------------------------
+# Format-fixup after retry: solver line 149 (_solver.py)
+#
+# Scenario: initial patch fails apply-check; retry response is malformed
+# (looks like a diff attempt but extraction fails); format-fixup reprompt on
+# the retry response produces a good patch.  This exercises the branch at
+# _solver.py line 149 that appends "--- format fixup (retry N) ---" to raw_log.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_openai_format_fixup_after_retry(tmp_path: Path) -> None:
+    """Bad initial patch -> retry with malformed -> fixup reprompt -> good patch.
+
+    Covers _solver.py line 149: raw_log.append(f"--- format fixup (retry {n}) ---").
+    """
+    repo = _make_repo(tmp_path)
+    bad_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-value\n+value = 2\n"
+    # Retry produces malformed (looks like a diff attempt, but extraction fails)
+    malformed_retry = (
+        "Here is the fix:\n\n"
+        "--- a/rich/pretty.py\n"
+        "+++ b/rich/pretty.py\n"
+        "@@ -1 +1 @@\n"
+        "broken-line-without-prefix\n"
+    )
+    good_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+
+    # Calls: (1) bad_patch, (2) malformed_retry, (3) good_patch from fixup reprompt
+    adapter = _make_adapter(
+        side_effect=[
+            _completion(bad_patch),
+            _completion(malformed_retry),
+            _completion(good_patch),
+        ],
+    )
+
+    result = await adapter.solve(_task(), str(repo))
+
+    assert result.patch == good_patch
+    assert adapter._client.chat.completions.create.await_count == 3
+    # The fixup-after-retry marker must appear in the raw log
+    assert "--- format fixup (retry 2) ---" in result.raw_response
+
+
+# ---------------------------------------------------------------------------
+# Fallback_raws path: solver lines 201-210 (_extract_with_format_fixup)
+#
+# Scenario: initial response is malformed, FORMAT_REPROMPT response also
+# malformed, FORMAT_REPROMPT_STRICT response has NO diff marker so the loop
+# breaks early (line 202), then fallback_raws=[original_malformed] is tried
+# and also fails (extraction returns ""), so the function returns ("", cost, log).
+# This hits lines 201-202 (break) and 204-210 (fallback loop + empty return).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_openai_fallback_raws_all_fail_yields_empty_patch(tmp_path: Path) -> None:
+    """All format reprompts fail AND fallback raws are also unextractable -> empty patch.
+
+    Covers _solver.py lines 201-202 (break on no diff marker) and lines 204-210
+    (fallback loop exhausted, return empty string).
+    """
+    repo = _make_repo(tmp_path)
+    # All three responses look like diffs but none are extractable
+    malformed = (
+        "Here is the fix:\n\n"
+        "--- a/rich/pretty.py\n"
+        "+++ b/rich/pretty.py\n"
+        "@@ -1 +1 @@\n"
+        "broken-line-without-prefix\n"
+    )
+    # Second reprompt response: no diff marker at all -> triggers break at line 202
+    no_diff_marker = "I am unable to produce a valid diff for this issue."
+
+    # Calls: (1) malformed initial, (2) FORMAT_REPROMPT fixup -> malformed again,
+    # (3) FORMAT_REPROMPT_STRICT fixup -> no diff marker (triggers break)
+    adapter = _make_adapter(
+        side_effect=[
+            _completion(malformed),
+            _completion(malformed),
+            _completion(no_diff_marker),
+        ],
+    )
+
+    result = await adapter.solve(_task(), str(repo))
+
+    # All attempts fail: empty patch returned (no crash)
+    assert result.patch == ""
+    # 1 initial + 2 format-fixup reprompts = 3 calls
+    assert adapter._client.chat.completions.create.await_count == 3
+
+
+# ---------------------------------------------------------------------------
+# Fallback_raws SUCCESS path: solver lines 207-208
+#
+# Scenario: initial patch is bad (fails apply-check); retry response is
+# malformed (looks like diff but not extractable); FORMAT_REPROMPT fixup also
+# malformed; FORMAT_REPROMPT_STRICT fixup has no diff marker (break); then the
+# fallback loop tries fallback_raws=[retry_malformed, original_bad_patch] —
+# the original bad_patch IS extractable so line 207-208 is hit and the fallback
+# patch is returned.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_openai_fallback_raws_extractable_fallback_returned(tmp_path: Path) -> None:
+    """Format fixup fails entirely; fallback_raws contain an extractable patch.
+
+    Covers _solver.py lines 207-208: the fallback loop finds an extractable
+    patch in fallback_raws and returns it via the agent.extract_fallback_raw path.
+
+    Flow:
+      Call 1: bad_patch (fails apply-check, attempt 0 of 3)
+      Call 2: malformed_retry (needs format fixup)
+      Call 3: FORMAT_REPROMPT -> still malformed
+      Call 4: FORMAT_REPROMPT_STRICT -> no diff marker (break)
+              -> fallback finds bad_patch from fallback_raws -> extract_fallback_raw path
+              -> bad_patch fails apply-check again (attempt 1 of 3)
+      Call 5: good_patch (second retry, applies cleanly)
+    """
+    repo = _make_repo(tmp_path)
+    bad_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-value\n+value = 2\n"
+    malformed_retry = (
+        "Here is the corrected diff:\n\n"
+        "--- a/rich/pretty.py\n"
+        "+++ b/rich/pretty.py\n"
+        "@@ -1 +1 @@\n"
+        "broken-line-without-prefix\n"
+    )
+    no_diff_marker = "Sorry, I cannot produce a valid diff."
+    good_patch = "--- a/rich/pretty.py\n+++ b/rich/pretty.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+
+    adapter = _make_adapter(
+        side_effect=[
+            _completion(bad_patch),  # call 1: initial, fails apply
+            _completion(malformed_retry),  # call 2: retry, malformed -> fixup loop
+            _completion(malformed_retry),  # call 3: FORMAT_REPROMPT -> still malformed
+            _completion(no_diff_marker),  # call 4: FORMAT_REPROMPT_STRICT -> break
+            # fallback extracts bad_patch (extract_fallback_raw), fails apply again
+            _completion(good_patch),  # call 5: second retry -> good patch
+        ],
+    )
+
+    result = await adapter.solve(_task(), str(repo))
+
+    assert result.patch == good_patch
+    assert adapter._client.chat.completions.create.await_count == 5

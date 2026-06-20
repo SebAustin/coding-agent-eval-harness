@@ -12,7 +12,7 @@ requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
 dependencies = [
   "anthropic==0.40.0",
-  "openai==1.53.0",
+  "openai==1.57.4",
   "docker==7.1.0",
   "gitpython==3.1.43",
   "sentence-transformers==3.3.1",
@@ -28,6 +28,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff==0.8.4","mypy==1.13.0","pytest==8.3.4","pytest-asyncio==0.24.0",
        "pytest-cov==6.0.0","respx==0.21.1","pytest-mock==3.14.0"]
+# Precompute-only: needed solely to regenerate the SWE-bench contamination
+# embeddings via scripts/precompute_contamination.py. Not required at runtime.
+contamination = ["datasets==3.2.0"]
 [project.scripts]
 coding-eval = "coding_eval.cli:app"
 [tool.ruff]
@@ -35,7 +38,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D", "ANN101", "COM812", "ISC001"]
+ignore = ["D", "COM812", "ISC001"]
 
 [tool.mypy]
 strict = true

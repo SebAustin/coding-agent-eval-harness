@@ -41,7 +41,24 @@ class OpenAIAdapter(AgentAdapter):
     agent_id = "openai"
 
     def __init__(self, api_key: str | None = None) -> None:
-        self._client = openai.AsyncOpenAI(api_key=api_key)
+        # Construct the client LAZILY. The OpenAI SDK raises at construction when
+        # api_key is None and OPENAI_API_KEY is unset, but the harness contract is
+        # that an adapter is always constructible (like the Anthropic adapter) and
+        # a missing key only surfaces when you actually solve. So store the key and
+        # defer client creation to first use.
+        self._api_key = api_key
+        self._client_instance: openai.AsyncOpenAI | None = None
+
+    @property
+    def _client(self) -> openai.AsyncOpenAI:
+        if self._client_instance is None:
+            self._client_instance = openai.AsyncOpenAI(api_key=self._api_key)
+        return self._client_instance
+
+    @_client.setter
+    def _client(self, client: openai.AsyncOpenAI) -> None:
+        # Lets tests inject a mock client via ``adapter._client = AsyncMock()``.
+        self._client_instance = client
 
     def name(self) -> str:
         return self.agent_id

@@ -22,12 +22,12 @@ correct diffs, and a leaderboard you can commit next to your code.
 
 ```mermaid
 flowchart TD
-    D[data/tasks/seed_50.jsonl\n50 PR-issue pairs] --> C[contamination.py\ncosine sim vs SWE-bench train]
+    D[data/tasks/seed_50.jsonl\n20 PR-issue pairs] --> C[contamination.py\ncosine sim vs SWE-bench train]
     C --> R[Runner: task loop]
-    R --> A1[ClaudeCode\nAdapter]
-    R --> A2[Cursor\nAdapter]
-    R --> A3[Aider\nAdapter]
-    R --> A4[OpenAI Codex\nAdapter]
+    R --> A1[claude-code\nAdapter]
+    R --> A2[claude-code-agentic\nAdapter]
+    R --> A3[openai\nAdapter]
+    R --> A4[aider\nAdapter]
     A1 & A2 & A3 & A4 --> P[patch string]
     P --> S[DockerSandbox\ngit apply + pytest\n--network none --memory 512m]
     S --> RB[5-axis Rubric\ntest_pass · diff_minimality\ncomplexity · style · semantic]
@@ -53,14 +53,15 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 | `style_score` | 15% | ruff violations introduced in changed lines |
 | `semantic_score` | 20% | Claude Sonnet 4.5 judge: does the patch correctly address the issue? |
 
-## Leaderboard (v0.1.0 — claude-code, 20-task `seed_50`)
+## Leaderboard (claude-code, 20-task `seed_50`)
 
 > Measured numbers from `results/leaderboard.json` (`--seed 42`, full current
-> dataset of 20 tasks). Multi-agent (Aider/Codex) comparison and dataset
-> expansion to 50 tasks are pending (issues #1, #2). The single-shot vs
-> `claude-code-agentic` head-to-head is reproducible via `make eval-compare`
-> ([agentic comparison](docs/agentic_comparison.md); full-dataset numbers pending
-> a credit window). Per-task composite varies up
+> dataset of 20 tasks). The `openai` adapter (v0.2) is available and ready to
+> run — real per-task numbers require a paid run with `OPENAI_API_KEY` set; see
+> the [Agents](#agents) section. Dataset expansion to 50 tasks is pending (issue
+> #2). The single-shot vs `claude-code-agentic` head-to-head is reproducible via
+> `make eval-compare` ([agentic comparison](docs/agentic_comparison.md);
+> full-dataset numbers pending a credit window). Per-task composite varies up
 > to ~0.2 between runs from agent sampling (`temperature=0` is not a seed) — see
 > [methodology §Limitations](docs/methodology.md). Average over runs before
 > reading rankings into single-run differences.
@@ -72,8 +73,8 @@ uv run coding-eval run --agents claude-code --limit 5 --smoke
 *Contamination: 0/20 tasks flagged vs SWE-bench train. Of the 3 tasks scoring 0,
 all are single-shot agent limits (the model needs to explore multiple files and
 hallucinates context) rather than harness failures — now addressed by the
-tool-using [`claude-code-agentic`](#agents) adapter. Full 50-task contamination
-analysis: [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
+tool-using [`claude-code-agentic`](#agents) adapter. Contamination analysis
+(current 20-task corpus): [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
 
 ## Agents
 
