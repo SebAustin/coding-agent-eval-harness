@@ -62,13 +62,16 @@ silently treating them as clean.
 
 ## seed_50 snapshot
 
-On the current `data/tasks/seed_50.jsonl` corpus (50 tasks, Textualize/rich + fastapi/typer):
+On the current `data/tasks/seed_50.jsonl` corpus (20 tasks built so far; target 50 — see
+[issue #2](https://github.com/SebAustin/coding-agent-eval-harness/issues/2)):
 
 | Metric | Value |
 | --- | ---: |
-| `n_total` | 50 |
-| `n_contaminated` | 8 |
-| `contamination_rate` | 16% |
+| `n_total` | 20 |
+| `n_contaminated` | 0 |
+| `contamination_rate` | 0% |
+
+Numbers above reflect the live built corpus. Update this table after each dataset expansion run.
 
 Leaderboard output always includes:
 
@@ -82,7 +85,7 @@ metrics separately in publications.
 
 When publishing leaderboard results, include:
 
-1. Full-corpus composite (all 50 tasks)
+1. Full-corpus composite (all tasks in the run)
 2. `n_contaminated` and `contamination_rate`
 3. Clean-subset composite (optional but recommended)
 4. Embedding model name and threshold
