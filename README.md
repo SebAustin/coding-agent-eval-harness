@@ -81,15 +81,30 @@ analysis: [`docs/contamination_analysis.md`](docs/contamination_analysis.md).*
 |---|---|---|---|
 | `claude-code` | Single-shot: fixed repo-context prompt → one diff (+ apply-check retries) | ~$0.09 | Default; fast and cheap for fixes whose context fits up front. |
 | `claude-code-agentic` | Tool-using: read-only `read_file`/`grep`/`list_dir` over the clone, loops until it emits an applicable diff | ~$1–2 | Multi-file fixes that need codebase exploration (e.g. a helper + its callers). |
+| `openai` | Single-shot via OpenAI `gpt-4o-2024-11-20`; same apply-check + format-fixup pipeline as `claude-code` | ~$0.04–0.10 | Cross-vendor comparison; requires `OPENAI_API_KEY`. |
 | `aider` | Subprocess wrapper around the `aider` CLI | — | External-tool comparison. |
 
 ```bash
-# Single-shot (default)
+# Single-shot Claude (default)
 uv run coding-eval run --agents claude-code --limit 5
+
+# Single-shot OpenAI (gpt-4o) — requires OPENAI_API_KEY in .env
+uv run coding-eval run --agents openai --limit 5
+
+# Cross-vendor comparison in one run
+uv run coding-eval run --agents claude-code --agents openai --limit 5
 
 # Tool-using agentic variant — explores the repo before patching
 uv run coding-eval run --agents claude-code-agentic --tasks-file data/tasks/typer-0822.jsonl
 ```
+
+**Single-shot provider comparison:** `claude-code` and `openai` share the identical
+apply-check + format-fixup + bounded-retry pipeline via `agents/_solver.py`. The only
+difference is the provider closure (Anthropic Messages API vs OpenAI Chat Completions API,
+system prompt as kwarg vs first message). This makes per-provider score differences
+attributable to model quality, not harness differences. Real per-task numbers require a
+paid run with `OPENAI_API_KEY` set; the adapter is fully unit-tested offline with a mocked
+client (see `tests/test_openai_adapter.py`).
 
 The agentic adapter is bounded by `MAX_TURNS` (call count), `MAX_COST_USD` (spend),
 and a per-task wall-clock timeout (`CODING_EVAL_AGENT_TIMEOUT_S`, default 600s); transient
