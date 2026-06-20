@@ -122,6 +122,7 @@ per-axis delta) — see [agentic comparison](docs/agentic_comparison.md).
 - [Contamination analysis](docs/contamination_analysis.md) — threshold and overlap stats
 - [Adding agents](docs/adding_agents.md) — register a new `AgentAdapter`
 - [Agentic comparison](docs/agentic_comparison.md) — reproducible single-shot vs agentic head-to-head
+- [Changelog](CHANGELOG.md) — release history (v0.2.0: the `openai` adapter + shared solver)
 
 ## Sources
 
