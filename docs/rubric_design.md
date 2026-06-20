@@ -156,7 +156,7 @@ patch correctly addresses the issue given:
 3. Single reprompt with `JUDGE_REPROMPT`
 4. Failure → 0.0, logged as `semantic.parse_failed`
 
-Results cached in SQLite (`CACHE_VERSION = v5`) keyed by issue + patch prefix + test context.
+Results cached in SQLite (`CACHE_VERSION = v6`) keyed by issue + patch prefix + test context.
 
 ---
 
