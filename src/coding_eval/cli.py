@@ -261,7 +261,7 @@ async def _run_eval_async(
     all_results: list[TaskResult] = []
     for agent_id in agents:
         log.info("eval.agent_start", agent_id=agent_id, n_tasks=len(tasks))
-        adapter = get_adapter(agent_id, api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        adapter = get_adapter(agent_id)
         agent_results: list[TaskResult] = []
         for task in tasks:
             log.info("eval.task_start", agent_id=agent_id, task_id=task.task_id)
