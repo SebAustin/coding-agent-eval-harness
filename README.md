@@ -49,64 +49,9 @@ isolated Docker sandbox → a 5-axis rubric scores it → results land on the le
 
 ### Detailed pipeline
 
-```mermaid
-flowchart TD
-    classDef input fill:#e8f4fd,stroke:#4a90d9,color:#1a3a5c
-    classDef agent fill:#f0f4e8,stroke:#6a9a3a,color:#2a4a1a
-    classDef shared fill:#fff8e1,stroke:#e6a817,color:#5a3a00
-    classDef sandbox fill:#fce8e8,stroke:#c0392b,color:#5a0a0a
-    classDef scoring fill:#f3e8fc,stroke:#8e44ad,color:#3a0a5a
-    classDef output fill:#e8fcf0,stroke:#27ae60,color:#0a3a1a
+![Detailed architecture pipeline: contamination-filtered PR-issue tasks flow through the runner to four agents (claude-code and openai via the shared _solver; claude-code-agentic and aider direct) producing a patch, which runs in an isolated Docker sandbox and is scored by the 5-axis rubric (with a Claude judge for the semantic axis) onto the leaderboard.](docs/architecture.svg)
 
-    subgraph dataset ["Dataset &amp; Contamination"]
-        seed[(seed_50.jsonl<br/>20 PR-issue pairs)]:::input
-        emb[(swebench_train_embeddings.npz)]:::input
-        contam["contamination.py<br/>cosine sim &gt; 0.85 vs SWE-bench train"]:::input
-    end
-
-    subgraph agents ["Agents (Host)"]
-        runner["Runner<br/>task loop"]:::agent
-        cc["claude-code<br/>single-shot · Anthropic"]:::agent
-        oa["openai<br/>single-shot · OpenAI"]:::agent
-        cca["claude-code-agentic<br/>tool loop · read_file / grep / list_dir"]:::agent
-        adr["aider<br/>CLI subprocess"]:::agent
-        solver{{"_solver.py<br/>apply-check · fixup · retry"}}:::shared
-        patch("patch string"):::agent
-    end
-
-    subgraph sandbox_box ["Isolated Execution — Docker sandbox"]
-        sandbox_run["DockerSandbox<br/>git apply + pytest -x<br/>network=none · memory=512m · 1 CPU"]:::sandbox
-    end
-
-    subgraph scoring_box ["Scoring &amp; Output"]
-        rubric["5-axis Rubric<br/>test pass 35% · minimality 15%<br/>complexity 15% · style 15%<br/>semantic 20%"]:::scoring
-        semantic("Claude judge<br/>semantic_score"):::scoring
-        leader(["Leaderboard<br/>results/leaderboard.json<br/>results/leaderboard.md"]):::output
-    end
-
-    seed --> contam
-    emb --> contam
-    contam --> runner
-    runner --> cc
-    runner --> oa
-    runner --> cca
-    runner --> adr
-    cc -->|completes via| solver
-    oa -->|completes via| solver
-    solver -->|patch| patch
-    cca -->|patch| patch
-    adr -->|patch| patch
-    patch -->|patch| sandbox_run
-    sandbox_run -->|score| rubric
-    rubric -->|score| leader
-    rubric --> semantic
-```
-
-Single-shot adapters (`claude-code`, `openai`) share an identical apply-check + format-fixup + bounded-retry pipeline via `agents/_solver.py`; `claude-code-agentic` (tool loop) and `aider` (CLI subprocess) bypass the solver and emit a patch directly. Agent API calls happen entirely on the host; only the patch string crosses into the Docker sandbox.
-
-> A static SVG export of this diagram lives at [`docs/architecture.svg`](docs/architecture.svg)
-> for renderers without Mermaid support (it mirrors the diagram above; regenerate it if the
-> pipeline changes).
+Single-shot adapters (`claude-code`, `openai`) share an identical apply-check + format-fixup + bounded-retry pipeline via `agents/_solver.py`; `claude-code-agentic` (tool loop) and `aider` (CLI subprocess) bypass the solver and emit a patch directly. Agent API calls happen entirely on the host; only the patch string crosses into the Docker sandbox. (The diagram above is [`docs/architecture.svg`](docs/architecture.svg) — regenerate it if the pipeline changes.)
 
 ## Quickstart
 
