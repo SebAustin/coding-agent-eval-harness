@@ -104,6 +104,10 @@ flowchart TD
 
 Single-shot adapters (`claude-code`, `openai`) share an identical apply-check + format-fixup + bounded-retry pipeline via `agents/_solver.py`; `claude-code-agentic` (tool loop) and `aider` (CLI subprocess) bypass the solver and emit a patch directly. Agent API calls happen entirely on the host; only the patch string crosses into the Docker sandbox.
 
+> A static SVG export of this diagram lives at [`docs/architecture.svg`](docs/architecture.svg)
+> for renderers without Mermaid support (it mirrors the diagram above; regenerate it if the
+> pipeline changes).
+
 ## Quickstart
 
 ```bash
