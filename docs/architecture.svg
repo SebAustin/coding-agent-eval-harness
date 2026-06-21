@@ -3,8 +3,13 @@
   <desc>Detailed architecture: a Dataset and Contamination stage feeds the runner; the runner dispatches to four agents, where single-shot claude-code and openai route through a shared _solver before emitting a patch while claude-code-agentic and aider emit a patch directly; the patch runs in an isolated Docker sandbox; a 5-axis rubric (with a Claude judge for the semantic axis) scores it onto the leaderboard.</desc>
 
   <defs>
-    <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#5F5E5A"/>
+    <!-- main data-flow arrowhead: filled, wider proportions -->
+    <marker id="arr-flow" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#5F5E5A"/>
+    </marker>
+    <!-- sub-call arrowhead: open chevron, lighter -->
+    <marker id="arr-sub" viewBox="0 0 10 8" refX="8" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,4 L0,8" fill="none" stroke="#9B97A0" stroke-width="1.5"/>
     </marker>
   </defs>
 
@@ -23,39 +28,43 @@
   </g>
 
   <!-- ============ ARROWS (drawn under nodes) ============ -->
-  <g stroke="#888780" stroke-width="1.75" fill="none" marker-end="url(#ar)">
-    <!-- panel 1 internal -->
-    <line x1="232" y1="84" x2="328" y2="100"/>
-    <line x1="232" y1="130" x2="328" y2="122"/>
-    <!-- contam -> runner -->
-    <line x1="435" y1="142" x2="428" y2="212"/>
-    <!-- runner -> adapters -->
-    <line x1="428" y1="252" x2="120" y2="298"/>
-    <line x1="428" y1="252" x2="255" y2="298"/>
-    <line x1="428" y1="252" x2="419" y2="298"/>
-    <line x1="428" y1="252" x2="578" y2="298"/>
-    <!-- cc, oa -> solver -->
-    <line x1="106" y1="350" x2="135" y2="391"/>
-    <line x1="250" y1="350" x2="220" y2="391"/>
-    <!-- solver -> patch ; cca -> patch ; adr -> patch -->
-    <line x1="281" y1="424" x2="338" y2="488"/>
-    <line x1="419" y1="350" x2="402" y2="468"/>
-    <line x1="586" y1="350" x2="462" y2="484"/>
+  <g stroke="#6B6965" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-flow)">
+    <!-- dataset files -> contam (straight into left face) -->
+    <path d="M 232,84 L 330,84"/>
+    <path d="M 232,130 L 330,130"/>
+    <!-- contam -> runner (straight vertical) -->
+    <path d="M 428,142 L 428,214"/>
+    <!-- runner -> adapters (smooth fan: vertical exit + vertical entry) -->
+    <path d="M 428,252 C 428,282 106,270 106,300"/>
+    <path d="M 428,252 C 428,282 250,270 250,300"/>
+    <path d="M 428,252 C 428,282 419,270 419,300"/>
+    <path d="M 428,252 C 428,282 586,270 586,300"/>
+    <!-- cc, oa -> solver (straight verticals into hexagon top edge) -->
+    <path d="M 106,350 L 106,393"/>
+    <path d="M 250,350 L 250,393"/>
+    <!-- solver / cca / adr -> patch (converge into the top face) -->
+    <path d="M 281,422 L 360,422 Q 368,422 368,430 L 368,470"/>
+    <path d="M 419,350 L 419,470"/>
+    <path d="M 586,350 L 586,440 Q 586,448 578,448 L 448,448 Q 440,448 440,456 L 440,470"/>
     <!-- patch -> sandbox -->
-    <line x1="400" y1="512" x2="372" y2="594"/>
-    <!-- sandbox -> rubric -->
-    <line x1="330" y1="644" x2="160" y2="704"/>
-    <!-- rubric -> leader ; rubric -> semantic -->
-    <line x1="260" y1="748" x2="468" y2="746"/>
-    <line x1="150" y1="798" x2="338" y2="806"/>
+    <path d="M 400,512 L 400,578 Q 400,586 392,586 L 358,586 Q 350,586 350,594 L 350,596"/>
+    <!-- sandbox -> rubric (routes through the inter-panel gap, enters rubric top) -->
+    <path d="M 350,644 L 350,650 Q 350,658 342,658 L 160,658 Q 152,658 152,666 L 152,706"/>
+    <!-- rubric -> leader (straight into left face) -->
+    <path d="M 260,752 L 470,752"/>
+  </g>
+  <!-- sub-call: the rubric's semantic axis invokes the Claude judge -->
+  <g stroke="#9B97A0" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 3" marker-end="url(#arr-sub)">
+    <path d="M 152,798 L 152,818 Q 152,826 160,826 L 300,826"/>
   </g>
 
   <!-- ============ ARROW LABELS ============ -->
   <g font-size="8.5" fill="#444441" text-anchor="middle">
-    <rect x="150" y="366" width="66" height="14" rx="7" fill="#F1EFE8"/><text x="183" y="376">completes via</text>
-    <rect x="378" y="546" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="395" y="556">patch</text>
-    <rect x="232" y="668" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="249" y="678">score</text>
-    <rect x="348" y="731" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="365" y="741">score</text>
+    <rect x="144" y="366" width="66" height="14" rx="7" fill="#F1EFE8"/><text x="177" y="376">completes via</text>
+    <rect x="378" y="549" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="395" y="559">patch</text>
+    <rect x="218" y="651" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="235" y="661">score</text>
+    <rect x="348" y="745" width="34" height="14" rx="7" fill="#F1EFE8"/><text x="365" y="755">score</text>
+    <rect x="198" y="819" width="56" height="14" rx="7" fill="#F1EFE8"/><text x="226" y="829">semantic axis</text>
   </g>
 
   <!-- ============ NODES ============ -->
