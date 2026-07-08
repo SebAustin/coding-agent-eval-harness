@@ -1,7 +1,7 @@
 {
   "version": "0.2.0",
   "seed": "seed_50",
-  "created_at": "2026-07-07T12:00:50.616431+00:00",
+  "created_at": "2026-07-08T11:14:20.023806+00:00",
   "entries": [
     {
       "agent_id": "aider",
@@ -18,7 +18,7 @@
       "contamination_rate": 0.0,
       "n_errors": 20,
       "total_cost_usd": 0.0,
-      "mean_latency_ms": 2586.3140455000007
+      "mean_latency_ms": 1154.2146397500062
     },
     {
       "agent_id": "claude-code",
@@ -35,7 +35,7 @@
       "contamination_rate": 0.0,
       "n_errors": 20,
       "total_cost_usd": 0.0,
-      "mean_latency_ms": 19549.0113094
+      "mean_latency_ms": 18752.45807629999
     }
   ]
 }
