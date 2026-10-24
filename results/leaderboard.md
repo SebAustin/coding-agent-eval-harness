@@ -1,6 +1,6 @@
 # Leaderboard
 
-Seed: `seed_50` · Version: `0.2.0` · Generated: `2026-10-23T14:14:06.391795+00:00`
+Seed: `seed_50` · Version: `0.2.0` · Generated: `2026-10-24T13:15:49.667211+00:00`
 
 | Agent | Composite | Test pass | Diff min | Complexity | Style | Semantic | Cost/task | n_clean | Contamination% |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
